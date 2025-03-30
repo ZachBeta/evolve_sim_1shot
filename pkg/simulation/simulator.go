@@ -6,18 +6,23 @@ import (
 
 	"github.com/zachbeta/evolve_sim/pkg/config"
 	"github.com/zachbeta/evolve_sim/pkg/organism"
+	"github.com/zachbeta/evolve_sim/pkg/types"
 	"github.com/zachbeta/evolve_sim/pkg/world"
 )
+
+// ReproductionEventHandler is a function that handles reproduction events
+type ReproductionEventHandler func(types.Point)
 
 // Simulator handles the simulation loop and organism updates
 type Simulator struct {
 	World           *world.World
 	Config          config.SimulationConfig
-	Time            float64    // Simulation time in seconds
-	TimeStep        float64    // Fixed time step in seconds
-	IsPaused        bool       // Flag to pause/resume simulation
-	SimulationSpeed float64    // Speed multiplier
-	rng             *rand.Rand // Random number generator
+	Time            float64                  // Simulation time in seconds
+	TimeStep        float64                  // Fixed time step in seconds
+	IsPaused        bool                     // Flag to pause/resume simulation
+	SimulationSpeed float64                  // Speed multiplier
+	rng             *rand.Rand               // Random number generator
+	OnReproduction  ReproductionEventHandler // Optional handler for reproduction events
 }
 
 // NewSimulator creates a new simulation engine with the given world and config
@@ -39,7 +44,13 @@ func NewSimulator(world *world.World, config config.SimulationConfig) *Simulator
 		IsPaused:        false,
 		SimulationSpeed: config.SimulationSpeed,
 		rng:             rng,
+		OnReproduction:  nil,
 	}
+}
+
+// SetReproductionHandler sets a function to be called when reproduction events occur
+func (s *Simulator) SetReproductionHandler(handler ReproductionEventHandler) {
+	s.OnReproduction = handler
 }
 
 // Step advances the simulation by one time step
@@ -77,7 +88,14 @@ func (s *Simulator) Step() {
 	s.World.RemoveDeadOrganisms()
 
 	// Process reproduction with our configuration
-	s.World.ProcessReproductionWithConfig(s.Config.Reproduction)
+	reproCount, reproPositions := s.World.ProcessReproductionWithConfig(s.Config.Reproduction)
+
+	// If reproduction events occurred and we have a handler, call it for each event
+	if reproCount > 0 && s.OnReproduction != nil {
+		for _, pos := range reproPositions {
+			s.OnReproduction(pos)
+		}
+	}
 
 	// Update simulation time
 	s.Time += adjustedTimeStep

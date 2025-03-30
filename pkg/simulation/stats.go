@@ -248,3 +248,18 @@ func ExportStatsJSON(stats []SimulationStats, filename string) error {
 	// Write to file
 	return os.WriteFile(filename, data, 0644)
 }
+
+// CalculateStatistics collects statistics for the world without requiring a simulator instance
+func CalculateStatistics(world interface {
+	GetOrganisms() []types.Organism
+	GetChemicalSources() []types.ChemicalSource
+	GetBounds() types.Rect
+	GetConcentrationAt(types.Point) float64
+}, simTime float64) SimulationStats {
+	return SimulationStats{
+		Time:            simTime,
+		RealTimeElapsed: time.Duration(0), // Will be set by caller if needed
+		Organisms:       calculateOrganismStats(world.GetOrganisms(), world),
+		Chemicals:       calculateChemicalStats(world.GetChemicalSources(), world, world.GetBounds()),
+	}
+}

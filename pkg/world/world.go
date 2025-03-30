@@ -410,7 +410,8 @@ const (
 
 // ProcessReproduction checks all organisms for reproduction eligibility
 // and creates offspring as needed
-func (w *World) ProcessReproduction() int {
+// Returns the number of reproductions and their positions
+func (w *World) ProcessReproduction() (int, []types.Point) {
 	return w.ProcessReproductionWithConfig(config.ReproductionConfig{
 		MaxPopulation: DefaultMaxOrganismCount,
 	})
@@ -418,7 +419,8 @@ func (w *World) ProcessReproduction() int {
 
 // ProcessReproductionWithConfig checks all organisms for reproduction eligibility
 // and creates offspring based on the provided configuration
-func (w *World) ProcessReproductionWithConfig(cfg config.ReproductionConfig) int {
+// Returns the number of reproductions that occurred and the positions where they happened
+func (w *World) ProcessReproductionWithConfig(cfg config.ReproductionConfig) (int, []types.Point) {
 	w.organismMutex.Lock()
 	defer w.organismMutex.Unlock()
 
@@ -429,11 +431,14 @@ func (w *World) ProcessReproductionWithConfig(cfg config.ReproductionConfig) int
 
 	// If we've reached the max population, don't allow reproduction
 	if len(w.Organisms) >= maxPopulation {
-		return 0
+		return 0, nil
 	}
 
 	// Create a slice to hold new organisms
 	newOrganisms := make([]types.Organism, 0)
+
+	// Track reproduction event positions
+	reproductionPositions := make([]types.Point, 0)
 
 	// Track how many new organisms were created
 	reproductionCount := 0
@@ -448,6 +453,9 @@ func (w *World) ProcessReproductionWithConfig(cfg config.ReproductionConfig) int
 			if w.Boundaries.Contains(offspring.Position) {
 				newOrganisms = append(newOrganisms, offspring)
 				reproductionCount++
+
+				// Track the position where reproduction occurred
+				reproductionPositions = append(reproductionPositions, w.Organisms[i].Position)
 			}
 		}
 	}
@@ -455,7 +463,7 @@ func (w *World) ProcessReproductionWithConfig(cfg config.ReproductionConfig) int
 	// Add all new organisms to the world
 	w.Organisms = append(w.Organisms, newOrganisms...)
 
-	return reproductionCount
+	return reproductionCount, reproductionPositions
 }
 
 // GetPopulationInfo returns information about the current population

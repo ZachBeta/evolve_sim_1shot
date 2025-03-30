@@ -44,7 +44,7 @@ type Renderer struct {
 	previousOrgCount    int                 // To detect reproduction events
 }
 
-// NewRenderer creates a new renderer with the given configuration
+// NewRenderer creates a new renderer with the specified world and config
 func NewRenderer(world *world.World, simulator *simulation.Simulator, config config.SimulationConfig) *Renderer {
 	// Initialize available color schemes
 	colorSchemes := []ColorScheme{
@@ -57,8 +57,8 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 	// Get initial organism count
 	initialCount, _ := world.GetPopulationInfo()
 
-	// Create a new renderer
-	r := &Renderer{
+	// Create renderer
+	renderer := &Renderer{
 		World:               world,
 		Simulator:           simulator,
 		Config:              config,
@@ -67,22 +67,25 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 		ShowGrid:            config.Render.ShowGrid,
 		ShowSensors:         config.Render.ShowSensors,
 		ShowLegend:          config.Render.ShowLegend,
-		ShowTrails:          false, // Default to false, can be toggled
-		FPS:                 0,
+		ShowTrails:          false, // Default to off
+		FPS:                 0.0,
 		keyStates:           make(map[ebiten.Key]bool),
-		CurrentColorScheme:  ViridisScheme,
+		CurrentColorScheme:  colorSchemes[0],
 		ColorSchemes:        colorSchemes,
 		CurrentSchemeIndex:  0,
-		interpolationFactor: 1.0, // Default to full interpolation
+		interpolationFactor: 0.5, // Default interpolation for animations
 		reproductionEvents:  make([]ReproductionEvent, 0),
 		previousOrgCount:    initialCount,
 	}
 
-	// Create a triangle image for optimized drawing
-	r.triangleImage = ebiten.NewImage(16, 16)
-	r.triangleOpts = ebiten.DrawImageOptions{}
+	// Create triangle image for optimized drawing
+	renderer.triangleImage = ebiten.NewImage(16, 16)
+	renderer.triangleOpts = ebiten.DrawImageOptions{}
 
-	return r
+	// Register with the simulator to receive reproduction events
+	simulator.SetReproductionHandler(renderer.AddReproductionEvent)
+
+	return renderer
 }
 
 // isKeyJustPressed checks if a key was just pressed this frame
@@ -93,77 +96,83 @@ func (r *Renderer) isKeyJustPressed(key ebiten.Key) bool {
 	return isPressed && !wasPressed
 }
 
-// Update is called each frame by Ebiten
+// Update handles user input and updates animation states
 func (r *Renderer) Update() error {
-	// Update simulator
-	r.Simulator.Step()
-
-	// Update stats
-	r.Stats = r.Simulator.CollectStats()
-
-	// Update interpolation factor (will be 1.0 most of the time, could be adjusted for smoother animations)
-	r.interpolationFactor = 1.0
-
-	// Update FPS
-	r.FPS = ebiten.ActualFPS()
-
-	// Update reproduction events
-	r.updateReproductionEvents(r.Simulator.TimeStep * r.Simulator.SimulationSpeed)
-
-	// Handle keyboard input - only respond to key presses, not holds
+	// Process user input first
+	// Space: Pause/Resume
 	if r.isKeyJustPressed(ebiten.KeySpace) {
 		r.Simulator.SetPaused(!r.Simulator.IsPaused)
 	}
 
-	if r.isKeyJustPressed(ebiten.KeyR) {
-		r.Simulator.Reset()
-	}
-
+	// G: Toggle grid
 	if r.isKeyJustPressed(ebiten.KeyG) {
 		r.ShowGrid = !r.ShowGrid
 	}
 
+	// S: Toggle sensor visualization
 	if r.isKeyJustPressed(ebiten.KeyS) {
 		r.ShowSensors = !r.ShowSensors
 	}
 
+	// L: Toggle legend
 	if r.isKeyJustPressed(ebiten.KeyL) {
 		r.ShowLegend = !r.ShowLegend
 	}
 
+	// T: Toggle trails
 	if r.isKeyJustPressed(ebiten.KeyT) {
 		r.ShowTrails = !r.ShowTrails
 	}
 
-	// Cycle through color schemes
+	// M: Cycle color schemes
 	if r.isKeyJustPressed(ebiten.KeyM) {
 		r.CurrentSchemeIndex = (r.CurrentSchemeIndex + 1) % len(r.ColorSchemes)
 		r.CurrentColorScheme = r.ColorSchemes[r.CurrentSchemeIndex]
 	}
 
-	// Speed control - these can respond continuously
-	if ebiten.IsKeyPressed(ebiten.KeyEqual) {
-		r.Simulator.SetSimulationSpeed(r.Simulator.SimulationSpeed * 1.1)
+	// R: Reset simulation
+	if r.isKeyJustPressed(ebiten.KeyR) {
+		r.Simulator.Reset()
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyMinus) {
-		r.Simulator.SetSimulationSpeed(r.Simulator.SimulationSpeed * 0.9)
+	// +: Increase simulation speed
+	if r.isKeyJustPressed(ebiten.KeyEqual) {
+		r.Simulator.SetSimulationSpeed(r.Simulator.SimulationSpeed * 1.5)
 	}
+
+	// -: Decrease simulation speed
+	if r.isKeyJustPressed(ebiten.KeyMinus) {
+		r.Simulator.SetSimulationSpeed(r.Simulator.SimulationSpeed / 1.5)
+	}
+
+	// Step the simulation
+	r.Simulator.Step()
+
+	// Update FPS counter
+	r.FPS = ebiten.CurrentFPS()
+
+	// Update reproduction events
+	r.updateReproductionEvents(r.Simulator.TimeStep * r.Simulator.SimulationSpeed)
+
+	// Update statistics
+	stats := simulation.CalculateStatistics(r.World, r.Simulator.Time)
+	r.Stats = stats
 
 	return nil
 }
 
-// Draw renders the current state to the screen
+// Draw renders the current state of the simulation
 func (r *Renderer) Draw(screen *ebiten.Image) {
-	// Clear screen
-	screen.Fill(color.RGBA{20, 20, 30, 255})
+	// Clear the screen with a dark background
+	screen.Fill(color.RGBA{20, 20, 25, 255})
 
-	// Draw grid if enabled
+	// Draw concentration grid if available
+	r.drawChemicalConcentration(screen)
+
+	// Draw grid for visual reference if enabled
 	if r.ShowGrid {
 		r.drawGrid(screen)
 	}
-
-	// Chemical concentration visualization has been disabled for performance reasons
 
 	// Draw chemical sources
 	r.drawChemicalSources(screen)
@@ -174,13 +183,13 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 	// Draw reproduction events
 	r.drawReproductionEvents(screen)
 
+	// Draw legend if enabled
+	if r.ShowLegend {
+		r.drawLegend(screen)
+	}
+
 	// Draw statistics
 	r.drawStats(screen)
-
-	// Draw concentration legend if enabled - disabled for performance
-	// if r.ShowLegend && r.ShowConcentration {
-	//	r.drawConcentrationLegend(screen)
-	// }
 }
 
 // Layout returns the logical screen dimensions
@@ -272,6 +281,7 @@ func (r *Renderer) drawChemicalSources(screen *ebiten.Image) {
 // Draw organisms
 func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 	organisms := r.World.GetOrganisms()
+	currentTime := r.Simulator.Time // Get current simulation time for animations
 
 	for _, org := range organisms {
 		// Convert world coordinates to screen coordinates
@@ -289,6 +299,22 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 		// Modify color based on energy level
 		// Low energy organisms appear darker/more transparent
 		energyRatio := org.Energy / org.EnergyCapacity
+
+		// Critical energy effect (pulsing when below 20%)
+		var pulseEffect float64 = 1.0
+		if energyRatio < 0.2 {
+			// Create a pulsing effect based on time
+			pulseFrequency := 5.0                                                 // pulses per second
+			pulseAmount := 0.5 + 0.5*math.Sin(currentTime*pulseFrequency*math.Pi) // 0.5-1.5 range
+
+			// Make pulse more intense as energy decreases
+			pulseIntensity := 1.0 - (energyRatio / 0.2) // 0-1 range as energy drops from 20% to 0%
+			pulseEffect = 1.0 + (pulseAmount-1.0)*pulseIntensity
+
+			// Apply pulse to color intensity
+			energyRatio = math.Min(1.0, energyRatio*pulseEffect)
+		}
+
 		red := uint8(float64(baseRed) * math.Sqrt(energyRatio))
 		green := uint8(float64(baseGreen) * math.Sqrt(energyRatio))
 		blue := uint8(float64(baseBlue) * math.Sqrt(energyRatio))
@@ -328,6 +354,12 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 		// Define triangle size (can be adjusted based on organism properties)
 		// Scale size slightly with energy level for visual feedback
 		sizeMultiplier := 0.8 + 0.4*energyRatio // Size reduced by up to 20% when low energy
+
+		// Add pulsing effect for critically low energy
+		if energyRatio < 0.2 && pulseEffect > 1.0 {
+			sizeMultiplier *= pulseEffect * 0.8 // Pulsing size, slightly subdued
+		}
+
 		size := 4.0 * sizeMultiplier
 
 		// Calculate triangle vertices
@@ -358,23 +390,68 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 		ebitenutil.DrawLine(screen, leftX, leftY, rightX, rightY, color.RGBA{255, 255, 255, borderAlpha})
 		ebitenutil.DrawLine(screen, rightX, rightY, frontX, frontY, color.RGBA{255, 255, 255, borderAlpha})
 
-		// Draw energy indicator (small bar above organism)
-		if energyRatio < 0.99 { // Only draw when not full
-			barWidth := 8.0
-			barHeight := 1.5
-			barX := screenX - barWidth/2
-			barY := screenY - size*2
+		// Draw energy bar
+		// Always draw the energy bar, enhanced version
+		barWidth := 12.0
+		barHeight := 2.5
+		barX := screenX - barWidth/2
+		barY := screenY - size*2.5 // Position higher above organism
 
-			// Background (empty) bar
-			ebitenutil.DrawRect(screen, barX, barY, barWidth, barHeight, color.RGBA{40, 40, 40, 200})
+		// Background (empty) bar with border
+		bgAlpha := uint8(80 + 120*energyRatio) // More visible when energy is higher
+		ebitenutil.DrawRect(screen, barX-0.5, barY-0.5, barWidth+1, barHeight+1, color.RGBA{30, 30, 30, bgAlpha})
+		ebitenutil.DrawRect(screen, barX, barY, barWidth, barHeight, color.RGBA{50, 50, 50, bgAlpha})
 
-			// Filled portion based on energy
-			fillWidth := barWidth * energyRatio
+		// Filled portion based on energy
+		fillWidth := barWidth * energyRatio
 
-			// Color goes from red (low) to green (high)
-			barRed := uint8(255 * (1 - energyRatio))
-			barGreen := uint8(255 * energyRatio)
-			ebitenutil.DrawRect(screen, barX, barY, fillWidth, barHeight, color.RGBA{barRed, barGreen, 0, 230})
+		// Color changes from red (low) to yellow (medium) to green (high)
+		barRed := uint8(255)
+		barGreen := uint8(0)
+
+		if energyRatio > 0.5 {
+			// Green increases as energy goes from 50% to 100%
+			barGreen = uint8(255 * (energyRatio - 0.5) * 2)
+		} else {
+			// Red stays at max, green increases as energy goes from 0% to 50%
+			barGreen = uint8(255 * energyRatio * 2)
+		}
+
+		// Make bar pulse for critical energy
+		if energyRatio < 0.2 && pulseEffect > 1.0 {
+			// Make bar flash more intensely when critically low
+			barRed = uint8(math.Min(255, float64(barRed)*pulseEffect))
+		}
+
+		// Draw the energy bar with anti-aliasing by drawing multiple rects with varying alpha
+		aaOffset := 0.5
+		ebitenutil.DrawRect(screen, barX-aaOffset, barY-aaOffset, fillWidth+aaOffset*2, barHeight+aaOffset*2,
+			color.RGBA{barRed / 2, barGreen / 2, 0, 128})
+		ebitenutil.DrawRect(screen, barX, barY, fillWidth, barHeight,
+			color.RGBA{barRed, barGreen, 0, 230})
+
+		// Add glow effect for organisms gaining energy
+		// Detect if organism is in optimal environment and gaining energy
+		concentration := r.World.GetConcentrationAt(org.Position)
+		similarityFactor := 1.0 - math.Min(math.Abs(concentration-org.ChemPreference)/org.ChemPreference, 1.0)
+
+		// If in optimal environment (similarity > 70%), show energy gain glow
+		if similarityFactor > 0.7 && energyRatio < 0.99 {
+			// Glow intensity based on how optimal the environment is
+			glowIntensity := (similarityFactor - 0.7) / 0.3 // 0-1 range
+
+			// Create a pulsing glow effect
+			glowFrequency := 2.0
+			glowPulse := 0.6 + 0.4*math.Sin(currentTime*glowFrequency*math.Pi*2) // 0.6-1.0 range
+
+			// Glow color matches energy bar but more transparent
+			glowRed := barRed / 2
+			glowGreen := barGreen / 2
+			glowAlpha := uint8(100 * glowIntensity * glowPulse)
+
+			// Create a glow around the energy bar
+			ebitenutil.DrawRect(screen, barX-2, barY-2, fillWidth+4, barHeight+4,
+				color.RGBA{glowRed, glowGreen, 0, glowAlpha})
 		}
 
 		// Draw sensors if enabled
@@ -386,6 +463,18 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 				sensorX, sensorY := r.worldToScreen(sensorPos)
 				ebitenutil.DrawLine(screen, screenX, screenY, sensorX, sensorY, color.RGBA{200, 200, 200, 128})
 			}
+		}
+
+		// Draw generation number above energy bar if multi-generation simulation is running
+		if org.Generation > 1 {
+			// Only draw for non-first generation organisms
+			genText := fmt.Sprintf("Gen %d", org.Generation)
+
+			// Calculate text position above energy bar
+			textX := int(barX)
+			textY := int(barY - 10)
+
+			ebitenutil.DebugPrintAt(screen, genText, textX, textY)
 		}
 	}
 }
@@ -575,4 +664,164 @@ func (r *Renderer) drawReproductionEvents(screen *ebiten.Image) {
 			}
 		}
 	}
+}
+
+// drawLegend shows a legend explaining the colors and symbols used in the simulation
+func (r *Renderer) drawLegend(screen *ebiten.Image) {
+	// Position and size of the legend
+	margin := 20
+	legendWidth := 220
+	lineHeight := 18
+	x := r.WindowWidth - legendWidth - margin
+	y := margin
+
+	// Background for the legend
+	for ly := y - 5; ly < y+200; ly++ {
+		for lx := x - 5; lx < x+legendWidth; lx++ {
+			if lx >= 0 && lx < r.WindowWidth && ly >= 0 && ly < r.WindowHeight {
+				screen.Set(lx, ly, color.RGBA{0, 0, 0, 150})
+			}
+		}
+	}
+
+	// Header
+	ebitenutil.DebugPrintAt(screen, "LEGEND", x, y)
+	y += lineHeight + 5
+
+	// Organism color explanation
+	ebitenutil.DebugPrintAt(screen, "Organisms:", x, y)
+	y += lineHeight
+
+	// Preference colors
+	prefBoxSize := 10
+	ebitenutil.DebugPrintAt(screen, "Preference:", x, y)
+
+	// Low preference (blue)
+	for py := y - prefBoxSize + 2; py < y+2; py++ {
+		for px := x + 100; px < x+100+prefBoxSize; px++ {
+			screen.Set(px, py, color.RGBA{0, 0, 255, 255})
+		}
+	}
+	ebitenutil.DebugPrintAt(screen, "Low", x+115, y)
+
+	// Medium preference (green)
+	for py := y - prefBoxSize + 2; py < y+2; py++ {
+		for px := x + 150; px < x+150+prefBoxSize; px++ {
+			screen.Set(px, py, color.RGBA{0, 255, 0, 255})
+		}
+	}
+	ebitenutil.DebugPrintAt(screen, "Mid", x+165, y)
+
+	// High preference (red)
+	for py := y - prefBoxSize + 2; py < y+2; py++ {
+		for px := x + 195; px < x+195+prefBoxSize; px++ {
+			screen.Set(px, py, color.RGBA{255, 0, 0, 255})
+		}
+	}
+	ebitenutil.DebugPrintAt(screen, "High", x+210, y)
+
+	y += lineHeight
+
+	// Energy level
+	ebitenutil.DebugPrintAt(screen, "Energy:", x, y)
+
+	// Full energy
+	for py := y - prefBoxSize + 2; py < y+2; py++ {
+		for px := x + 100; px < x+100+prefBoxSize; px++ {
+			screen.Set(px, py, color.RGBA{200, 200, 200, 255})
+		}
+	}
+	ebitenutil.DebugPrintAt(screen, "Full", x+115, y)
+
+	// Low energy
+	for py := y - prefBoxSize + 2; py < y+2; py++ {
+		for px := x + 150; px < x+150+prefBoxSize; px++ {
+			screen.Set(px, py, color.RGBA{100, 100, 100, 255})
+		}
+	}
+	ebitenutil.DebugPrintAt(screen, "Low", x+165, y)
+
+	// Critical (pulsing)
+	for py := y - prefBoxSize + 2; py < y+2; py++ {
+		for px := x + 195; px < x+195+prefBoxSize; px++ {
+			screen.Set(px, py, color.RGBA{255, 0, 0, 200})
+		}
+	}
+	ebitenutil.DebugPrintAt(screen, "Critical", x+210, y)
+
+	y += lineHeight + 5
+
+	// Chemical sources
+	ebitenutil.DebugPrintAt(screen, "Chemical Sources:", x, y)
+	y += lineHeight
+
+	// Draw a small representation of a chemical source
+	sourceX := float64(x + 30)
+	sourceY := float64(y + 5)
+	sourceRadius := 8.0
+
+	// Draw the source circle
+	for cy := int(sourceY) - int(sourceRadius); cy <= int(sourceY)+int(sourceRadius); cy++ {
+		for cx := int(sourceX) - int(sourceRadius); cx <= int(sourceX)+int(sourceRadius); cx++ {
+			dx := float64(cx) - sourceX
+			dy := float64(cy) - sourceY
+			if dx*dx+dy*dy <= sourceRadius*sourceRadius {
+				screen.Set(cx, cy, GetColorFromScheme(r.CurrentColorScheme, 0.5))
+			}
+		}
+	}
+
+	// Draw the source outline
+	outlineColor := color.RGBA{255, 255, 255, 200}
+	for angle := 0.0; angle < 2*math.Pi; angle += 0.1 {
+		cx := int(sourceX + math.Cos(angle)*sourceRadius)
+		cy := int(sourceY + math.Sin(angle)*sourceRadius)
+		screen.Set(cx, cy, outlineColor)
+	}
+
+	// Source description
+	ebitenutil.DebugPrintAt(screen, "Size indicates energy", x+45, y)
+	y += lineHeight
+	ebitenutil.DebugPrintAt(screen, "Color indicates decay rate", x+45, y)
+
+	y += lineHeight + 5
+
+	// Reproduction events
+	ebitenutil.DebugPrintAt(screen, "Reproduction:", x, y)
+	y += lineHeight
+
+	// Draw a small representation of a reproduction event
+	reproX := float64(x + 30)
+	reproY := float64(y)
+	reproRadius := 6.0
+
+	// Draw the ripple effect
+	for radius := 3.0; radius <= reproRadius; radius += 1.0 {
+		alpha := uint8(255 * (reproRadius - radius) / reproRadius)
+		rippleColor := color.RGBA{255, 200, 0, alpha}
+		for angle := 0.0; angle < 2*math.Pi; angle += 0.1 {
+			cx := int(reproX + math.Cos(angle)*radius)
+			cy := int(reproY + math.Sin(angle)*radius)
+			screen.Set(cx, cy, rippleColor)
+		}
+	}
+
+	ebitenutil.DebugPrintAt(screen, "Yellow ripple effect", x+45, y)
+
+	y += lineHeight + 5
+
+	// Controls
+	ebitenutil.DebugPrintAt(screen, "CONTROLS", x, y)
+	y += lineHeight
+	ebitenutil.DebugPrintAt(screen, "Space: Pause/Resume", x, y)
+	y += lineHeight
+	ebitenutil.DebugPrintAt(screen, "G: Toggle Grid", x, y)
+	y += lineHeight
+	ebitenutil.DebugPrintAt(screen, "S: Toggle Sensors", x, y)
+	y += lineHeight
+	ebitenutil.DebugPrintAt(screen, "L: Toggle Legend", x, y)
+	y += lineHeight
+	ebitenutil.DebugPrintAt(screen, "T: Toggle Trails", x, y)
+	y += lineHeight
+	ebitenutil.DebugPrintAt(screen, "R: Reset Simulation", x, y)
 }
