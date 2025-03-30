@@ -66,3 +66,13 @@ The simulation can be configured using a JSON file. Copy `config_example.json` t
 - `pkg/organism`: Organism behavior and movement
 - `pkg/simulation`: Simulation engine
 - `pkg/renderer`: Visualization system
+
+## Documentation
+
+- `current_todos.md`: Active development tasks and upcoming features
+- `archived_docs/`: Completed implementation plans, tutorials, and reference docs
+- `spec.md`: Original project specifications and requirements
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
