@@ -26,8 +26,8 @@
     "windowWidth": 800,
     "windowHeight": 800,
     "frameRate": 60,
-    "showGrid": true,
-    "showConcentration": true,
+    "showGrid": false,
+    "showConcentration": false,
     "showSensors": true
   },
   "randomSeed": 0,

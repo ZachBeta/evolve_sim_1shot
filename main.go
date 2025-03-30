@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/pprof"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -23,7 +24,21 @@ func main() {
 	headless := flag.Bool("headless", false, "Run in headless mode (no UI)")
 	exportStats := flag.Bool("exportStats", false, "Export statistics to CSV and JSON")
 	duration := flag.Float64("duration", 60.0, "Simulation duration in seconds (headless mode only)")
+	cpuprofile := flag.String("cpuprofile", "", "Write CPU profile to file")
 	flag.Parse()
+
+	// Start CPU profiling if requested
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	// Load configuration
 	cfg, err := config.LoadFromFile(*configPath)

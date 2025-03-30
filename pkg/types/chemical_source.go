@@ -1,7 +1,6 @@
 package types
 
 import (
-	"fmt"
 	"math"
 )
 
@@ -45,7 +44,16 @@ func (cs ChemicalSource) GetConcentrationAt(point Point) float64 {
 		return 0
 	}
 
+	// Calculate distance to point
 	dist := cs.Position.DistanceTo(point)
+
+	// Early exit for distant points (optimization)
+	// If distance is too great, concentration will be negligible
+	// This threshold is based on decay factor and source strength
+	maxEffectiveDistance := math.Sqrt(cs.Strength / (0.001 * cs.DecayFactor))
+	if dist > maxEffectiveDistance {
+		return 0
+	}
 
 	// Avoid division by zero if point is at source
 	if dist < 1e-9 {
@@ -74,13 +82,8 @@ func (cs *ChemicalSource) Update(deltaTime float64, worldEnergy *float64) {
 	// Don't deplete more energy than available
 	baseDepletion = math.Min(baseDepletion, cs.Energy)
 
-	fmt.Printf("ChemicalSource update: Strength=%.2f, Energy=%.2f->", cs.Strength, cs.Energy)
-
 	// Deplete energy
 	cs.Energy -= baseDepletion
-
-	fmt.Printf("%.2f (-%0.2f), Rate=%.2f, DeltaTime=%.4f\n",
-		cs.Energy, baseDepletion, cs.DepletionRate, deltaTime)
 
 	// Track total energy removed from the system
 	*worldEnergy -= baseDepletion
@@ -89,6 +92,5 @@ func (cs *ChemicalSource) Update(deltaTime float64, worldEnergy *float64) {
 	if cs.Energy <= 0 {
 		cs.Energy = 0
 		cs.IsActive = false
-		fmt.Printf("ChemicalSource depleted and deactivated.\n")
 	}
 }

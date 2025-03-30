@@ -1,7 +1,6 @@
 package world
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"sync"
@@ -14,9 +13,15 @@ import (
 // World extends the basic types.World with additional functionality
 type World struct {
 	types.World
-	config            config.WorldConfig
-	chemicalConfig    config.ChemicalConfig // Store chemical config separately
-	mutex             sync.RWMutex
+	config         config.WorldConfig
+	chemicalConfig config.ChemicalConfig // Store chemical config separately
+
+	// Replace single mutex with more granular locks
+	sourceMutex   sync.RWMutex // For chemical sources
+	organismMutex sync.RWMutex // For organisms
+	gridMutex     sync.RWMutex // For concentration grid
+	energyMutex   sync.RWMutex // For energy tracking
+
 	concentrationGrid *ConcentrationGrid
 
 	// New fields for energy balance
@@ -49,8 +54,8 @@ func NewWorld(cfg config.SimulationConfig) *World {
 	// Initialize total energy to match target
 	world.totalSystemEnergy = world.targetSystemEnergy
 
-	// Initialize the concentration grid for faster lookups
-	world.InitializeConcentrationGrid(5.0)
+	// Initialize the concentration grid for faster lookups with larger cell size for better performance
+	world.InitializeConcentrationGrid(10.0)
 
 	return world
 }
@@ -62,8 +67,8 @@ func (w *World) GetConfig() config.WorldConfig {
 
 // AddOrganism adds an organism to the world thread-safely
 func (w *World) AddOrganism(org types.Organism) bool {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.organismMutex.Lock()
+	defer w.organismMutex.Unlock()
 
 	return w.World.AddOrganism(org)
 }
@@ -71,8 +76,8 @@ func (w *World) AddOrganism(org types.Organism) bool {
 // AddChemicalSource adds a chemical source to the world thread-safely
 // and invalidates the concentration grid
 func (w *World) AddChemicalSource(source types.ChemicalSource) bool {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.sourceMutex.Lock()
+	defer w.sourceMutex.Unlock()
 
 	success := w.World.AddChemicalSource(source)
 	if success {
@@ -84,8 +89,8 @@ func (w *World) AddChemicalSource(source types.ChemicalSource) bool {
 
 // GetOrganisms returns a copy of the organisms slice to avoid concurrent modification
 func (w *World) GetOrganisms() []types.Organism {
-	w.mutex.RLock()
-	defer w.mutex.RUnlock()
+	w.organismMutex.RLock()
+	defer w.organismMutex.RUnlock()
 
 	// Create a copy to avoid concurrent modification
 	orgCopy := make([]types.Organism, len(w.Organisms))
@@ -95,8 +100,8 @@ func (w *World) GetOrganisms() []types.Organism {
 
 // GetChemicalSources returns a copy of the chemical sources slice to avoid concurrent modification
 func (w *World) GetChemicalSources() []types.ChemicalSource {
-	w.mutex.RLock()
-	defer w.mutex.RUnlock()
+	w.sourceMutex.RLock()
+	defer w.sourceMutex.RUnlock()
 
 	// Create a copy to avoid concurrent modification
 	sourcesCopy := make([]types.ChemicalSource, len(w.ChemicalSources))
@@ -106,8 +111,8 @@ func (w *World) GetChemicalSources() []types.ChemicalSource {
 
 // GetOrganismAt returns the organism at the specified index
 func (w *World) GetOrganismAt(index int) (types.Organism, bool) {
-	w.mutex.RLock()
-	defer w.mutex.RUnlock()
+	w.organismMutex.RLock()
+	defer w.organismMutex.RUnlock()
 
 	if index < 0 || index >= len(w.Organisms) {
 		return types.Organism{}, false
@@ -118,8 +123,8 @@ func (w *World) GetOrganismAt(index int) (types.Organism, bool) {
 
 // UpdateOrganism updates an organism at the specified index
 func (w *World) UpdateOrganism(index int, org types.Organism) bool {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.organismMutex.Lock()
+	defer w.organismMutex.Unlock()
 
 	if index < 0 || index >= len(w.Organisms) {
 		return false
@@ -137,23 +142,27 @@ func (w *World) UpdateOrganism(index int, org types.Organism) bool {
 // GetConcentrationAt calculates the total chemical concentration at a given point
 // Uses the concentration grid if available for faster lookups
 func (w *World) GetConcentrationAt(point types.Point) float64 {
-	w.mutex.RLock()
-	defer w.mutex.RUnlock()
+	// First check if we have a concentration grid
+	w.gridMutex.RLock()
+	grid := w.concentrationGrid
+	w.gridMutex.RUnlock()
 
-	// If we have a concentration grid, use it
-	if w.concentrationGrid != nil {
-		return w.concentrationGrid.GetConcentrationAt(point)
+	if grid != nil {
+		return grid.GetConcentrationAt(point)
 	}
 
 	// Otherwise calculate directly (slower)
+	w.sourceMutex.RLock()
+	defer w.sourceMutex.RUnlock()
+
 	return w.World.GetConcentrationAt(point)
 }
 
 // GetConcentrationGradientAt calculates the gradient (direction of concentration change)
 // at the specified point
 func (w *World) GetConcentrationGradientAt(point types.Point) types.Point {
-	w.mutex.RLock()
-	defer w.mutex.RUnlock()
+	w.gridMutex.RLock()
+	defer w.gridMutex.RUnlock()
 
 	// If we have a concentration grid, use it for faster gradient calculation
 	if w.concentrationGrid != nil {
@@ -187,8 +196,8 @@ func (w *World) GetConcentrationGradientAt(point types.Point) types.Point {
 
 // InitializeConcentrationGrid initializes the concentration grid for faster lookups
 func (w *World) InitializeConcentrationGrid(resolution float64) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.gridMutex.Lock()
+	defer w.gridMutex.Unlock()
 
 	grid := NewConcentrationGrid(w.Width, w.Height, resolution)
 
@@ -213,8 +222,8 @@ func (w *World) GetBounds() types.Rect {
 
 // UpdateOrganisms replaces all organisms in the world with a new set
 func (w *World) UpdateOrganisms(organisms []types.Organism) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.organismMutex.Lock()
+	defer w.organismMutex.Unlock()
 
 	// Validate that all organisms are within bounds
 	validOrganisms := make([]types.Organism, 0, len(organisms))
@@ -230,8 +239,8 @@ func (w *World) UpdateOrganisms(organisms []types.Organism) {
 
 // PopulateWorld fills the world with organisms and chemical sources based on configuration
 func (w *World) PopulateWorld(cfg config.SimulationConfig) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.organismMutex.Lock()
+	defer w.organismMutex.Unlock()
 
 	// Create a random number generator with the provided seed
 	rng := rand.New(rand.NewSource(cfg.RandomSeed))
@@ -304,8 +313,8 @@ func (w *World) PopulateWorld(cfg config.SimulationConfig) {
 
 // Reset resets the world to its initial state
 func (w *World) Reset(cfg config.SimulationConfig) {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.organismMutex.Lock()
+	defer w.organismMutex.Unlock()
 
 	// Clear organisms and chemical sources
 	w.Organisms = []types.Organism{}
@@ -315,37 +324,37 @@ func (w *World) Reset(cfg config.SimulationConfig) {
 	w.concentrationGrid = nil
 
 	// Unlock mutex temporarily to allow nested locks in PopulateWorld
-	w.mutex.Unlock()
+	w.organismMutex.Unlock()
 
 	// Repopulate the world
 	w.PopulateWorld(cfg)
 
 	// Re-initialize the concentration grid
-	w.InitializeConcentrationGrid(5.0)
+	w.InitializeConcentrationGrid(10.0)
 
-	// Re-lock mutex to satisfy defer w.mutex.Unlock()
-	w.mutex.Lock()
+	// Re-lock mutex to satisfy defer w.organismMutex.Unlock()
+	w.organismMutex.Lock()
 }
 
 // GetConcentrationGrid returns the current concentration grid
 func (w *World) GetConcentrationGrid() *ConcentrationGrid {
-	w.mutex.RLock()
-	defer w.mutex.RUnlock()
+	w.gridMutex.RLock()
+	defer w.gridMutex.RUnlock()
 
 	// Ensure the grid is initialized
 	if w.concentrationGrid == nil {
 		// Release the read lock
-		w.mutex.RUnlock()
+		w.gridMutex.RUnlock()
 
 		// Acquire a write lock to initialize the grid
-		w.mutex.Lock()
+		w.gridMutex.Lock()
 		// Check again in case another thread initialized it while we were waiting
 		if w.concentrationGrid == nil {
-			w.InitializeConcentrationGrid(5.0)
+			w.InitializeConcentrationGrid(10.0)
 		}
 		// Downgrade to a read lock
-		w.mutex.Unlock()
-		w.mutex.RLock()
+		w.gridMutex.Unlock()
+		w.gridMutex.RLock()
 	}
 
 	return w.concentrationGrid
@@ -353,8 +362,8 @@ func (w *World) GetConcentrationGrid() *ConcentrationGrid {
 
 // RemoveOrganism removes an organism at the specified index
 func (w *World) RemoveOrganism(index int) bool {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.organismMutex.Lock()
+	defer w.organismMutex.Unlock()
 
 	if index < 0 || index >= len(w.Organisms) {
 		return false
@@ -368,8 +377,8 @@ func (w *World) RemoveOrganism(index int) bool {
 
 // RemoveDeadOrganisms removes all organisms with zero or negative energy
 func (w *World) RemoveDeadOrganisms() int {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.organismMutex.Lock()
+	defer w.organismMutex.Unlock()
 
 	aliveOrganisms := make([]types.Organism, 0, len(w.Organisms))
 	removedCount := 0
@@ -396,8 +405,8 @@ const (
 // ProcessReproduction checks all organisms for reproduction eligibility
 // and creates offspring as needed
 func (w *World) ProcessReproduction() int {
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.organismMutex.Lock()
+	defer w.organismMutex.Unlock()
 
 	// If we've reached the max population, don't allow reproduction
 	if len(w.Organisms) >= MaxOrganismCount {
@@ -432,8 +441,8 @@ func (w *World) ProcessReproduction() int {
 
 // GetPopulationInfo returns information about the current population
 func (w *World) GetPopulationInfo() (int, float64) {
-	w.mutex.RLock()
-	defer w.mutex.RUnlock()
+	w.organismMutex.RLock()
+	defer w.organismMutex.RUnlock()
 
 	count := len(w.Organisms)
 	avgEnergy := 0.0
@@ -450,19 +459,10 @@ func (w *World) GetPopulationInfo() (int, float64) {
 	return count, avgEnergy
 }
 
-// Counter for depletion calls
-var depletionCounter int
-
-// DepleteEnergyFromSourcesAt depletes energy from chemical sources based on an organism's energy consumption
-// at the specified position. The amount of energy to deplete is distributed among sources based on their
-// contribution to the total concentration at that position.
+// DepleteEnergyFromSourcesAt removes energy from chemical sources based on organism consumption
 func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64) {
-	depletionCounter++
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
-
-	fmt.Printf("[Depletion #%d] Position=(%.2f,%.2f), Amount=%.4f\n",
-		depletionCounter, position.X, position.Y, amount)
+	w.sourceMutex.Lock()
+	defer w.sourceMutex.Unlock()
 
 	// Calculate how much each source contributes to the concentration at this position
 	totalConcentration := 0.0
@@ -478,12 +478,8 @@ func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64)
 
 	// No concentration means no sources to deplete
 	if totalConcentration <= 0 {
-		fmt.Printf("[Depletion #%d] No concentration at position, skipping\n", depletionCounter)
 		return
 	}
-
-	// Track total depletion for this call
-	totalDepleted := 0.0
 
 	// Distribute depletion proportionally based on concentration contribution
 	for i := range w.ChemicalSources {
@@ -506,78 +502,81 @@ func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64)
 			// Track total energy removed from the system
 			w.totalSystemEnergy -= depletionAmount
 
-			totalDepleted += depletionAmount
-
-			fmt.Printf("[Depletion #%d] Source %d: Energy %.2f->%.2f (-%.2f)\n",
-				depletionCounter, i, originalEnergy, w.ChemicalSources[i].Energy, depletionAmount)
-
 			// Check for depletion
 			if w.ChemicalSources[i].Energy <= 0 {
 				w.ChemicalSources[i].Energy = 0
 				w.ChemicalSources[i].IsActive = false
 
-				// Invalidate the concentration grid since a source became inactive
+				// Invalidate the concentration grid when a source becomes inactive
 				w.concentrationGrid = nil
 			}
 		}
 	}
-
-	fmt.Printf("[Depletion #%d] Total depleted: %.4f\n", depletionCounter, totalDepleted)
 }
 
-// Counter for debugging
-var updateCounter int
-
-// UpdateChemicalSources updates all chemical sources, handling depletion and tracking system energy
+// UpdateChemicalSources updates all chemical sources in the world
 func (w *World) UpdateChemicalSources(deltaTime float64, rng *rand.Rand) {
-	updateCounter++
-	w.mutex.Lock()
-	defer w.mutex.Unlock()
+	w.sourceMutex.Lock()
+	defer w.sourceMutex.Unlock()
 
-	fmt.Printf("[Call #%d] UpdateChemicalSources called with deltaTime=%.4f\n", updateCounter, deltaTime)
-
-	// Update each source
-	activeSourceCount := 0
+	// Process each source
 	for i := range w.ChemicalSources {
-		// Log before state
-		fmt.Printf("Source %d before: Energy=%.2f, Active=%v\n", i, w.ChemicalSources[i].Energy, w.ChemicalSources[i].IsActive)
+		// Skip inactive sources
+		if !w.ChemicalSources[i].IsActive {
+			continue
+		}
 
-		// Save original energy for tracking
-		originalEnergy := w.ChemicalSources[i].Energy
+		// Remember energy before update
+		energyBefore := w.ChemicalSources[i].Energy
 
 		// Update the source
-		var localSystemEnergy float64 = 0 // Track changes separately to avoid pointer sharing
-		w.ChemicalSources[i].Update(deltaTime, &localSystemEnergy)
+		w.ChemicalSources[i].Update(deltaTime, &w.totalSystemEnergy)
 
-		// Apply the energy change to world's total
-		energyDelta := originalEnergy - w.ChemicalSources[i].Energy
-		w.totalSystemEnergy -= energyDelta
-
-		// Log after state
-		fmt.Printf("Source %d after: Energy=%.2f, Active=%v, Delta=%.2f\n",
-			i, w.ChemicalSources[i].Energy, w.ChemicalSources[i].IsActive, energyDelta)
-
-		// Count active sources
-		if w.ChemicalSources[i].IsActive {
-			activeSourceCount++
+		// If energy changed significantly, invalidate the concentration grid
+		if math.Abs(energyBefore-w.ChemicalSources[i].Energy) > energyBefore*0.05 {
+			w.concentrationGrid = nil
 		}
 	}
 
-	fmt.Printf("System energy: %.2f, Target: %.2f, Active sources: %d/%d\n",
-		w.totalSystemEnergy, w.targetSystemEnergy, activeSourceCount, len(w.ChemicalSources))
+	// Check if we need to regenerate depleted sources
+	regenerationProbability := w.chemicalConfig.RegenerationProbability * deltaTime
+	if rng.Float64() < regenerationProbability {
+		// Count inactive sources
+		inactiveSources := 0
+		for _, source := range w.ChemicalSources {
+			if !source.IsActive {
+				inactiveSources++
+			}
+		}
 
-	// Check if we need to create a new source
-	// Create new sources when:
-	// 1. System energy is below target
-	// 2. We have at least one inactive source
-	// 3. Random chance (to avoid creating too many at once)
-	sourceCreationProbability := deltaTime * w.chemicalConfig.RegenerationProbability * 5.0 // Increased probability
+		// If we have inactive sources, try to regenerate one
+		if inactiveSources > 0 {
+			// Find a random inactive source
+			inactiveIndices := make([]int, 0, inactiveSources)
+			for i, source := range w.ChemicalSources {
+				if !source.IsActive {
+					inactiveIndices = append(inactiveIndices, i)
+				}
+			}
 
-	if w.totalSystemEnergy < w.targetSystemEnergy*0.95 && // More aggressive threshold (was 0.8)
-		activeSourceCount < len(w.ChemicalSources) &&
-		rng.Float64() < sourceCreationProbability {
-		fmt.Printf("Creating new chemical source. Probability=%.4f\n", sourceCreationProbability)
-		w.CreateChemicalSource(rng)
+			if len(inactiveIndices) > 0 {
+				// Choose a random inactive source
+				randomIndex := inactiveIndices[rng.Intn(len(inactiveIndices))]
+
+				// Regenerate it
+				w.ChemicalSources[randomIndex].Energy = w.ChemicalSources[randomIndex].MaxEnergy
+				w.ChemicalSources[randomIndex].IsActive = true
+
+				// Update system energy
+				w.totalSystemEnergy += w.ChemicalSources[randomIndex].Energy
+
+				// Invalidate the concentration grid
+				w.concentrationGrid = nil
+			}
+		} else if len(w.ChemicalSources) < w.chemicalConfig.Count {
+			// Create a new source if we're below the target count
+			w.CreateChemicalSource(rng)
+		}
 	}
 }
 
@@ -633,8 +632,8 @@ func (w *World) CreateChemicalSource(rng *rand.Rand) {
 
 // GetSystemEnergyInfo returns the current total system energy and target energy
 func (w *World) GetSystemEnergyInfo() (float64, float64) {
-	w.mutex.RLock()
-	defer w.mutex.RUnlock()
+	w.energyMutex.RLock()
+	defer w.energyMutex.RUnlock()
 
 	return w.totalSystemEnergy, w.targetSystemEnergy
 }
