@@ -4,6 +4,9 @@ import (
 	"math"
 )
 
+// MaxTrailLength defines the maximum number of positions to store in the trail
+const MaxTrailLength = 30
+
 // Organism represents a single-cell organism in the simulation
 type Organism struct {
 	Position        Point      // Current position in the world
@@ -12,6 +15,8 @@ type Organism struct {
 	ChemPreference  float64    // Preferred chemical concentration
 	Speed           float64    // Movement speed (units per step)
 	SensorAngles    [3]float64 // Angles of sensors relative to heading (front, left, right)
+	PositionHistory []Point    // History of positions for drawing trails
+	UpdateCounter   int        // Counter to control how often we record position
 }
 
 // NewOrganism creates a new organism with the given parameters
@@ -23,6 +28,8 @@ func NewOrganism(position Point, heading, chemPreference, speed float64, sensorA
 		ChemPreference:  chemPreference,
 		Speed:           speed,
 		SensorAngles:    sensorAngles,
+		PositionHistory: make([]Point, 0, MaxTrailLength),
+		UpdateCounter:   0,
 	}
 }
 
@@ -72,5 +79,23 @@ func (o *Organism) Turn(angle float64) {
 	o.Heading = math.Mod(o.Heading, 2*math.Pi)
 	if o.Heading < 0 {
 		o.Heading += 2 * math.Pi
+	}
+}
+
+// UpdateTrail adds the current position to the position history
+// if enough movement has occurred since the last update
+func (o *Organism) UpdateTrail() {
+	// Only update every few frames to avoid too many points
+	o.UpdateCounter++
+	if o.UpdateCounter >= 5 { // Record every 5th update
+		o.UpdateCounter = 0
+
+		// Add current position to history
+		o.PositionHistory = append(o.PositionHistory, o.Position)
+
+		// Trim history if it exceeds max length
+		if len(o.PositionHistory) > MaxTrailLength {
+			o.PositionHistory = o.PositionHistory[1:]
+		}
 	}
 }

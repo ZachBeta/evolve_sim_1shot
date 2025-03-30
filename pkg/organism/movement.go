@@ -56,6 +56,9 @@ func Move(org *types.Organism, bounds types.Rect, deltaTime float64) {
 		org.Position = newPos
 	}
 
+	// Update the organism's trail
+	org.UpdateTrail()
+
 	// Ensure we take the shortest path for rotation (for smooth animation)
 	for org.Heading-org.PreviousHeading > math.Pi {
 		org.PreviousHeading += 2 * math.Pi

@@ -59,28 +59,28 @@ This document serves as both a tutorial and a checklist for implementing the nex
 
 ### Current Priorities
 
-#### 1. Organism Visualization (Highest Priority)
+#### 1. Organism Visualization (Highest Priority) ✅
 
-- [ ] **Implement triangle-based direction indicator**
-  - [ ] Replace current circle+line with triangle shape
-  - [ ] Size proportionally to organism
-  - [ ] Add smooth rotation during turns
-  - [ ] Ensure visibility over background
-  - [ ] Use color coding based on chemical preference
+- [x] **Implement triangle-based direction indicator**
+  - [x] Replace current circle+line with triangle shape
+  - [x] Size proportionally to organism
+  - [x] Add smooth rotation during turns
+  - [x] Ensure visibility over background
+  - [x] Use color coding based on chemical preference
 
 **Rationale**: This will make organisms easier to track and understand their movement, which is a core part of the simulation. It's also a straightforward improvement with high visual impact.
 
-#### 2. Organism Trails (High Priority)
+#### 2. Organism Trails (High Priority) ✅
 
-- [ ] **Implement basic trail effect**
-  - [ ] Store recent positions for organisms
-  - [ ] Draw fading trails behind moving organisms
-  - [ ] Add toggle key for trails
-  - [ ] Optimize storage for large numbers of organisms
+- [x] **Implement basic trail effect**
+  - [x] Store recent positions for organisms
+  - [x] Draw fading trails behind moving organisms
+  - [x] Add toggle key for trails
+  - [x] Optimize storage for large numbers of organisms
 
 **Rationale**: Trails help visualize movement patterns over time, revealing behavior patterns and making it easier to understand organism responses to chemical gradients.
 
-#### 3. Organism Selection (Medium Priority)
+#### 3. Organism Selection (Medium Priority) (Next Up!)
 
 - [ ] **Implement organism selection**
   - [ ] Add click detection for organisms
@@ -166,8 +166,8 @@ This document serves as both a tutorial and a checklist for implementing the nex
 
 - [x] Enhanced Heat Map Implementation
 - [x] Contour Line Implementation
-- [ ] Triangle-based Organism Representation
-- [ ] Organism Trails
+- [x] Triangle-based Organism Representation
+- [x] Organism Trails
 - [ ] Organism Selection
 - [ ] Click-to-place Chemical Sources (deprioritized)
 - [ ] Sensor Visualization

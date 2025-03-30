@@ -25,6 +25,7 @@ type Renderer struct {
 	ShowSensors         bool
 	ShowLegend          bool
 	ShowContours        bool
+	ShowTrails          bool
 	Stats               simulation.SimulationStats
 	FPS                 float64
 	keyStates           map[ebiten.Key]bool
@@ -71,6 +72,7 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 		ShowSensors:         config.Render.ShowSensors,
 		ShowLegend:          config.Render.ShowLegend,
 		ShowContours:        config.Render.ShowContours,
+		ShowTrails:          false, // Default to false, can be toggled
 		FPS:                 0,
 		keyStates:           make(map[ebiten.Key]bool),
 		CurrentColorScheme:  ViridisScheme,
@@ -147,6 +149,10 @@ func (r *Renderer) Update() error {
 		if r.ShowContours {
 			r.updateContourLines()
 		}
+	}
+
+	if r.isKeyJustPressed(ebiten.KeyT) {
+		r.ShowTrails = !r.ShowTrails
 	}
 
 	// Cycle through color schemes
@@ -374,6 +380,32 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 		blue := uint8((1 - normalizedPref) * 255)
 		green := uint8(128 - math.Abs(float64(normalizedPref*255-128)))
 
+		// Draw trail if enabled
+		if r.ShowTrails && len(org.PositionHistory) > 1 {
+			// Draw a line connecting all positions in history
+			trailColor := color.RGBA{red, green, blue, 100} // Semi-transparent
+
+			// Draw lines between consecutive points
+			for i := 0; i < len(org.PositionHistory)-1; i++ {
+				// Convert world coordinates to screen coordinates for both points
+				x1, y1 := r.worldToScreen(org.PositionHistory[i])
+				x2, y2 := r.worldToScreen(org.PositionHistory[i+1])
+
+				// Fade the trail as it gets older
+				alpha := uint8(40 + (160 * i / len(org.PositionHistory)))
+				fadedColor := color.RGBA{red, green, blue, alpha}
+
+				// Draw the line
+				ebitenutil.DrawLine(screen, x1, y1, x2, y2, fadedColor)
+			}
+
+			// Connect the last history point to current position
+			if len(org.PositionHistory) > 0 {
+				lastX, lastY := r.worldToScreen(org.PositionHistory[len(org.PositionHistory)-1])
+				ebitenutil.DrawLine(screen, lastX, lastY, screenX, screenY, trailColor)
+			}
+		}
+
 		// Calculate the visual heading with interpolation for smooth rotation
 		visualHeading := org.PreviousHeading + (org.Heading-org.PreviousHeading)*r.interpolationFactor
 
@@ -432,6 +464,7 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		fmt.Sprintf("Color Scheme: %s", r.CurrentColorScheme.Name),
 		fmt.Sprintf("Grid: %v", r.ShowGrid),
 		fmt.Sprintf("Contours: %v", r.ShowContours),
+		fmt.Sprintf("Trails: %v", r.ShowTrails),
 	}
 
 	// Draw stats in the top-left corner
@@ -448,6 +481,7 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		"O: Toggle Contours",
 		"S: Toggle Sensors",
 		"L: Toggle Legend",
+		"T: Toggle Trails",
 		"M: Cycle Color Schemes",
 		"+/-: Adjust Speed",
 	}
