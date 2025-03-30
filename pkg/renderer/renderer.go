@@ -25,6 +25,7 @@ type Renderer struct {
 	ShowSensors       bool
 	Stats             simulation.SimulationStats
 	FPS               float64
+	keyStates         map[ebiten.Key]bool
 }
 
 // NewRenderer creates a new renderer with the given configuration
@@ -39,7 +40,16 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 		ShowConcentration: config.Render.ShowConcentration,
 		ShowSensors:       config.Render.ShowSensors,
 		FPS:               0,
+		keyStates:         make(map[ebiten.Key]bool),
 	}
+}
+
+// isKeyJustPressed checks if a key was just pressed this frame
+func (r *Renderer) isKeyJustPressed(key ebiten.Key) bool {
+	wasPressed := r.keyStates[key]
+	isPressed := ebiten.IsKeyPressed(key)
+	r.keyStates[key] = isPressed
+	return isPressed && !wasPressed
 }
 
 // Update is called each frame by Ebiten
@@ -53,28 +63,28 @@ func (r *Renderer) Update() error {
 	// Update FPS
 	r.FPS = ebiten.ActualFPS()
 
-	// Handle keyboard input
-	if ebiten.IsKeyPressed(ebiten.KeySpace) {
+	// Handle keyboard input - only respond to key presses, not holds
+	if r.isKeyJustPressed(ebiten.KeySpace) {
 		r.Simulator.SetPaused(!r.Simulator.IsPaused)
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyR) {
+	if r.isKeyJustPressed(ebiten.KeyR) {
 		r.Simulator.Reset()
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyG) {
+	if r.isKeyJustPressed(ebiten.KeyG) {
 		r.ShowGrid = !r.ShowGrid
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyC) {
+	if r.isKeyJustPressed(ebiten.KeyC) {
 		r.ShowConcentration = !r.ShowConcentration
 	}
 
-	if ebiten.IsKeyPressed(ebiten.KeyS) {
+	if r.isKeyJustPressed(ebiten.KeyS) {
 		r.ShowSensors = !r.ShowSensors
 	}
 
-	// Speed control
+	// Speed control - these can respond continuously
 	if ebiten.IsKeyPressed(ebiten.KeyEqual) {
 		r.Simulator.SetSimulationSpeed(r.Simulator.SimulationSpeed * 1.1)
 	}
@@ -90,6 +100,11 @@ func (r *Renderer) Update() error {
 func (r *Renderer) Draw(screen *ebiten.Image) {
 	// Clear screen
 	screen.Fill(color.RGBA{20, 20, 30, 255})
+
+	// Draw grid if enabled
+	if r.ShowGrid {
+		r.drawGrid(screen)
+	}
 
 	// Draw chemical concentration if enabled
 	if r.ShowConcentration {
@@ -128,10 +143,71 @@ func (r *Renderer) worldToScreen(point types.Point) (float64, float64) {
 	return screenX, screenY
 }
 
-// Draw a placeholder for chemical concentration
+// Draw a visualization of chemical concentration
 func (r *Renderer) drawChemicalConcentration(screen *ebiten.Image) {
-	// This is a placeholder - will be implemented in future
-	ebitenutil.DebugPrint(screen, "Chemical concentration visualization not yet implemented")
+	bounds := r.World.GetBounds()
+	width := bounds.Max.X - bounds.Min.X
+	height := bounds.Max.Y - bounds.Min.Y
+
+	// Define grid resolution for visualization (lower = higher performance)
+	cellSizeX := float64(r.WindowWidth) / 40
+	cellSizeY := float64(r.WindowHeight) / 40
+
+	// Get concentration stats for color scaling
+	maxConcentration := r.Stats.Chemicals.MaxConcentration
+	if maxConcentration <= 0 {
+		maxConcentration = 1.0 // Prevent division by zero
+	}
+
+	// Draw concentration grid
+	for screenY := 0; screenY < r.WindowHeight; screenY += int(cellSizeY) {
+		for screenX := 0; screenX < r.WindowWidth; screenX += int(cellSizeX) {
+			// Convert screen coordinates to world coordinates
+			normalizedX := float64(screenX) / float64(r.WindowWidth)
+			normalizedY := float64(screenY) / float64(r.WindowHeight)
+
+			worldX := bounds.Min.X + normalizedX*width
+			worldY := bounds.Min.Y + normalizedY*height
+
+			// Get concentration at this point
+			point := types.Point{X: worldX, Y: worldY}
+			concentration := r.World.GetConcentrationAt(point)
+
+			// Normalize concentration for color mapping (0.0 to 1.0)
+			normalizedConc := math.Min(1.0, concentration/maxConcentration)
+
+			// Color mapping: blue (low) to red (high) through green
+			var cellColor color.RGBA
+			if normalizedConc < 0.5 {
+				// Blue to Green (0.0 to 0.5)
+				t := normalizedConc * 2
+				cellColor = color.RGBA{
+					R: 0,
+					G: uint8(255 * t),
+					B: uint8(255 * (1 - t)),
+					A: 100, // Semi-transparent
+				}
+			} else {
+				// Green to Red (0.5 to 1.0)
+				t := (normalizedConc - 0.5) * 2
+				cellColor = color.RGBA{
+					R: uint8(255 * t),
+					G: uint8(255 * (1 - t)),
+					B: 0,
+					A: 100, // Semi-transparent
+				}
+			}
+
+			// Draw a rectangle for this grid cell
+			for y := 0; y < int(cellSizeY); y++ {
+				for x := 0; x < int(cellSizeX); x++ {
+					if screenX+x < r.WindowWidth && screenY+y < r.WindowHeight {
+						screen.Set(screenX+x, screenY+y, cellColor)
+					}
+				}
+			}
+		}
+	}
 }
 
 // Draw chemical sources
@@ -241,5 +317,35 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 			10,
 			r.WindowHeight-20*len(controls)+i*20,
 		)
+	}
+}
+
+// Draw a grid for visual reference
+func (r *Renderer) drawGrid(screen *ebiten.Image) {
+	bounds := r.World.GetBounds()
+	width := bounds.Max.X - bounds.Min.X
+	height := bounds.Max.Y - bounds.Min.Y
+
+	// Define grid cell size in world coordinates
+	gridCellSize := 50.0 // World units per grid cell
+
+	// Calculate number of grid lines
+	numLinesX := int(width/gridCellSize) + 1
+	numLinesY := int(height/gridCellSize) + 1
+
+	// Draw vertical grid lines
+	for i := 0; i < numLinesX; i++ {
+		worldX := bounds.Min.X + float64(i)*gridCellSize
+		startX, startY := r.worldToScreen(types.Point{X: worldX, Y: bounds.Min.Y})
+		endX, endY := r.worldToScreen(types.Point{X: worldX, Y: bounds.Max.Y})
+		ebitenutil.DrawLine(screen, startX, startY, endX, endY, color.RGBA{60, 60, 80, 100})
+	}
+
+	// Draw horizontal grid lines
+	for i := 0; i < numLinesY; i++ {
+		worldY := bounds.Min.Y + float64(i)*gridCellSize
+		startX, startY := r.worldToScreen(types.Point{X: bounds.Min.X, Y: worldY})
+		endX, endY := r.worldToScreen(types.Point{X: bounds.Max.X, Y: worldY})
+		ebitenutil.DrawLine(screen, startX, startY, endX, endY, color.RGBA{60, 60, 80, 100})
 	}
 }

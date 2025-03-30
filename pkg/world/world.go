@@ -29,6 +29,9 @@ func NewWorld(cfg config.SimulationConfig) *World {
 	// Populate the world with organisms and chemical sources
 	world.PopulateWorld(cfg)
 
+	// Initialize the concentration grid for faster lookups
+	world.InitializeConcentrationGrid(5.0)
+
 	return world
 }
 
@@ -291,8 +294,15 @@ func (w *World) Reset(cfg config.SimulationConfig) {
 	// Reset concentration grid
 	w.concentrationGrid = nil
 
-	// Repopulate the world
+	// Unlock mutex temporarily to allow nested locks in PopulateWorld
 	w.mutex.Unlock()
+
+	// Repopulate the world
 	w.PopulateWorld(cfg)
+
+	// Re-initialize the concentration grid
+	w.InitializeConcentrationGrid(5.0)
+
+	// Re-lock mutex to satisfy defer w.mutex.Unlock()
 	w.mutex.Lock()
 }
