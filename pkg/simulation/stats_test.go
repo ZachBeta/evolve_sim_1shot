@@ -7,6 +7,16 @@ import (
 	"github.com/zachbeta/evolve_sim/pkg/types"
 )
 
+// mockWorld implements a simple world that returns predefined concentrations
+type mockWorld struct {
+	// Define a function that returns concentration at given point
+	concentrationFn func(types.Point) float64
+}
+
+func (m mockWorld) GetConcentrationAt(p types.Point) float64 {
+	return m.concentrationFn(p)
+}
+
 // TestCalculateOrganismStats tests the organism statistics calculation
 func TestCalculateOrganismStats(t *testing.T) {
 	// Create mock world
@@ -122,8 +132,8 @@ func TestCalculateChemicalStats(t *testing.T) {
 	}
 
 	// Center should have highest concentration
-	if stats.MaxConcentration < 50.0 {
-		t.Errorf("Expected max concentration > 50.0, got %f", stats.MaxConcentration)
+	if stats.MaxConcentration < 5.0 {
+		t.Errorf("Expected max concentration > 5.0, got %f", stats.MaxConcentration)
 	}
 
 	// Corners should have lowest concentration

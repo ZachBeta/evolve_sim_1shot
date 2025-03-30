@@ -1,6 +1,8 @@
 package organism
 
 import (
+	"math"
+
 	"github.com/zachbeta/evolve_sim/pkg/types"
 )
 
@@ -13,27 +15,41 @@ func Move(org *types.Organism, bounds types.Rect, deltaTime float64) {
 	// Store the original position to restore if needed
 	originalPos := org.Position
 
-	// Move the organism forward
-	org.MoveForward(distance)
+	// Move the organism forward based on heading and speed
+	dx := math.Cos(org.Heading) * distance
+	dy := math.Sin(org.Heading) * distance
+	newPos := types.Point{X: originalPos.X + dx, Y: originalPos.Y + dy}
 
 	// Check if the new position is within bounds
-	if !bounds.Contains(org.Position) {
-		// Restore original position
-		org.Position = originalPos
+	if newPos.X < bounds.Min.X || newPos.X >= bounds.Max.X ||
+		newPos.Y < bounds.Min.Y || newPos.Y >= bounds.Max.Y {
+		// Calculate new heading based on which boundary was hit
+		newHeading := org.Heading
 
-		// Adjust heading - bounce off the wall by reflecting the angle
-		// Determine which wall was hit
-		nextPos := originalPos
-		nextPos.X += distance * 2 * 0.5 * 1
-		if nextPos.X < bounds.Min.X || nextPos.X > bounds.Max.X {
-			// Hit left or right wall, reflect X component of heading
-			org.Turn(2 * (0 - org.Heading))
-		} else {
-			// Hit top or bottom wall, reflect Y component of heading
-			org.Turn(2 * (1.5708 - org.Heading)) // 1.5708 radians = 90 degrees
+		// Check for horizontal boundary collision
+		if newPos.X < bounds.Min.X || newPos.X >= bounds.Max.X {
+			// Hit left or right wall, reflect horizontally
+			newHeading = math.Pi - org.Heading
+			if newHeading < 0 {
+				newHeading += 2 * math.Pi
+			}
 		}
 
-		// Move a small distance in the new direction to avoid getting stuck
-		org.MoveForward(distance * 0.1)
+		// Check for vertical boundary collision
+		if newPos.Y < bounds.Min.Y || newPos.Y >= bounds.Max.Y {
+			// Hit top or bottom wall, reflect vertically
+			newHeading = 2*math.Pi - org.Heading
+		}
+
+		// Update the heading
+		org.Heading = newHeading
+
+		// Keep organism within bounds
+		boundedX := math.Max(bounds.Min.X, math.Min(newPos.X, bounds.Max.X-0.001))
+		boundedY := math.Max(bounds.Min.Y, math.Min(newPos.Y, bounds.Max.Y-0.001))
+		org.Position = types.Point{X: boundedX, Y: boundedY}
+	} else {
+		// No collision, update position normally
+		org.Position = newPos
 	}
 }

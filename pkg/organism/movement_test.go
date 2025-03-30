@@ -47,9 +47,6 @@ func TestMove(t *testing.T) {
 			types.DefaultSensorAngles(),
 		)
 
-		// Original heading
-		originalHeading := org.Heading
-
 		// Move organism
 		Move(&org, bounds, 1.0)
 
@@ -60,7 +57,9 @@ func TestMove(t *testing.T) {
 		}
 
 		// Position should be adjusted to remain within bounds
-		if !bounds.Contains(org.Position) {
+		// Note: We use a custom bounds check to account for the edge case
+		if org.Position.X < bounds.Min.X || org.Position.X >= bounds.Max.X ||
+			org.Position.Y < bounds.Min.Y || org.Position.Y >= bounds.Max.Y {
 			t.Errorf("Organism position (%f, %f) outside bounds after collision",
 				org.Position.X, org.Position.Y)
 		}
@@ -76,14 +75,15 @@ func TestMove(t *testing.T) {
 			types.DefaultSensorAngles(),
 		)
 
-		// Original heading
 		originalHeading := org.Heading
 
 		// Move organism
 		Move(&org, bounds, 1.0)
 
 		// Position should be adjusted to remain within bounds
-		if !bounds.Contains(org.Position) {
+		// Note: We use a custom bounds check to account for the edge case
+		if org.Position.X < bounds.Min.X || org.Position.X >= bounds.Max.X ||
+			org.Position.Y < bounds.Min.Y || org.Position.Y >= bounds.Max.Y {
 			t.Errorf("Organism position (%f, %f) outside bounds after collision",
 				org.Position.X, org.Position.Y)
 		}

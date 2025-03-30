@@ -44,13 +44,13 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 	// Save to a temporary file
 	tempFile := filepath.Join(tempDir, "test_config.json")
-	err = SaveConfig(config, tempFile)
+	err = SaveToFile(config, tempFile)
 	if err != nil {
 		t.Fatalf("Failed to save config: %v", err)
 	}
 
 	// Load the config
-	loadedConfig, err := LoadConfig(tempFile)
+	loadedConfig, err := LoadFromFile(tempFile)
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 func TestLoadMissingConfig(t *testing.T) {
 	// Try to load a non-existent file
-	config, err := LoadConfig("non_existent_file.json")
+	config, err := LoadFromFile("non_existent_file.json")
 
 	// Should return an error
 	if err == nil {
@@ -104,7 +104,7 @@ func TestLoadInvalidConfig(t *testing.T) {
 	}
 
 	// Try to load the invalid file
-	config, err := LoadConfig(tempFile)
+	config, err := LoadFromFile(tempFile)
 
 	// Should return an error
 	if err == nil {
@@ -142,7 +142,7 @@ func TestPartialConfig(t *testing.T) {
 	}
 
 	// Load the partial config
-	config, err := LoadConfig(tempFile)
+	config, err := LoadFromFile(tempFile)
 	if err != nil {
 		t.Fatalf("Failed to load partial config: %v", err)
 	}

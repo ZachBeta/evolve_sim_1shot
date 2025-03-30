@@ -8,9 +8,11 @@ import (
 )
 
 func TestNewWorld(t *testing.T) {
-	cfg := config.WorldConfig{
-		Width:  100.0,
-		Height: 200.0,
+	cfg := config.SimulationConfig{
+		World: config.WorldConfig{
+			Width:  100.0,
+			Height: 200.0,
+		},
 	}
 
 	world := NewWorld(cfg)
@@ -33,7 +35,9 @@ func TestNewWorld(t *testing.T) {
 }
 
 func TestWorldAddAndGetOrganisms(t *testing.T) {
-	world := NewWorld(config.WorldConfig{Width: 100.0, Height: 100.0})
+	world := NewWorld(config.SimulationConfig{
+		World: config.WorldConfig{Width: 100.0, Height: 100.0},
+	})
 
 	// Add an organism
 	org := types.NewOrganism(
@@ -80,7 +84,9 @@ func TestWorldAddAndGetOrganisms(t *testing.T) {
 }
 
 func TestWorldUpdateOrganism(t *testing.T) {
-	world := NewWorld(config.WorldConfig{Width: 100.0, Height: 100.0})
+	world := NewWorld(config.SimulationConfig{
+		World: config.WorldConfig{Width: 100.0, Height: 100.0},
+	})
 
 	// Add an organism
 	org := types.NewOrganism(
@@ -126,7 +132,9 @@ func TestWorldUpdateOrganism(t *testing.T) {
 }
 
 func TestWorldAddAndGetChemicalSources(t *testing.T) {
-	world := NewWorld(config.WorldConfig{Width: 100.0, Height: 100.0})
+	world := NewWorld(config.SimulationConfig{
+		World: config.WorldConfig{Width: 100.0, Height: 100.0},
+	})
 
 	// Add a chemical source
 	source := types.NewChemicalSource(
@@ -160,7 +168,9 @@ func TestWorldAddAndGetChemicalSources(t *testing.T) {
 }
 
 func TestWorldGetConcentrationAt(t *testing.T) {
-	world := NewWorld(config.WorldConfig{Width: 100.0, Height: 100.0})
+	world := NewWorld(config.SimulationConfig{
+		World: config.WorldConfig{Width: 100.0, Height: 100.0},
+	})
 
 	// Add two chemical sources
 	source1 := types.NewChemicalSource(types.NewPoint(25, 25), 100.0, 0.1)
@@ -191,7 +201,9 @@ func TestWorldGetConcentrationAt(t *testing.T) {
 }
 
 func TestWorldGradientCalculation(t *testing.T) {
-	world := NewWorld(config.WorldConfig{Width: 100.0, Height: 100.0})
+	world := NewWorld(config.SimulationConfig{
+		World: config.WorldConfig{Width: 100.0, Height: 100.0},
+	})
 
 	// Add a single chemical source at the center
 	source := types.NewChemicalSource(types.NewPoint(50, 50), 100.0, 0.01)
@@ -222,7 +234,9 @@ func TestWorldGradientCalculation(t *testing.T) {
 }
 
 func TestConcentrationGrid(t *testing.T) {
-	world := NewWorld(config.WorldConfig{Width: 100.0, Height: 100.0})
+	world := NewWorld(config.SimulationConfig{
+		World: config.WorldConfig{Width: 100.0, Height: 100.0},
+	})
 
 	// Add a chemical source
 	source := types.NewChemicalSource(types.NewPoint(50, 50), 100.0, 0.01)
