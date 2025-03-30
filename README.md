@@ -45,7 +45,7 @@ go build -o run_evolve_sim ./cmd/evolve_sim
 # run tests
 go test -v ./...
 # dev
-go run cmd/evolve_sim/main.go
+go run main.go
 ```
 
 ## Configuration
