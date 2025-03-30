@@ -76,8 +76,8 @@ func (s *Simulator) Step() {
 	// Remove dead organisms (those with no energy)
 	s.World.RemoveDeadOrganisms()
 
-	// Process reproduction
-	s.World.ProcessReproduction()
+	// Process reproduction with our configuration
+	s.World.ProcessReproductionWithConfig(s.Config.Reproduction)
 
 	// Update simulation time
 	s.Time += adjustedTimeStep

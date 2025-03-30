@@ -31,12 +31,47 @@ type Organism struct {
 	Energy                float64    // Current energy level
 	EnergyCapacity        float64    // Maximum energy capacity
 	TimeSinceReproduction float64    // Time elapsed since last reproduction
+
+	// New energy-related fields
+	MetabolicRate    float64 // Base energy consumption per time unit
+	MovementCost     float64 // Energy cost per unit of movement
+	SensingCost      float64 // Energy cost for sensing operations
+	OptimalGain      float64 // Maximum energy gain in optimal conditions
+	EnergyEfficiency float64 // Multiplier affecting energy consumption
+
+	// State flags
+	MarkForRemoval bool  // Flag to mark organism for removal (e.g., when energy depleted)
+	Generation     int   // Generation counter for tracking lineage
+	ID             int64 // Unique identifier
+	ParentID       int64 // ID of parent organism (for tracking lineage)
 }
 
-// NewOrganism creates a new organism with the given parameters
-func NewOrganism(position Point, heading, chemPreference, speed float64, sensorAngles [3]float64) Organism {
-	// Default energy capacity based on size/speed
-	energyCapacity := 100.0 + speed*10.0
+// OrganismConfig contains all the parameters needed to create a new organism
+type OrganismConfig struct {
+	InitialEnergy         float64    // Starting energy percentage (0.0-1.0 of max capacity)
+	MaximumEnergy         float64    // Base maximum energy capacity
+	BaseMetabolicRate     float64    // Energy consumed per second just existing
+	MovementCostFactor    float64    // Energy cost per unit of movement
+	SensingCostBase       float64    // Energy cost for sensor operations
+	OptimalEnergyGainRate float64    // Maximum energy gain per second
+	EnergyEfficiencyRange [2]float64 // Min/max for random initialization
+}
+
+// NewOrganismWithConfig creates a new organism with the given parameters and energy configuration
+func NewOrganismWithConfig(
+	position Point,
+	heading,
+	chemPreference,
+	speed float64,
+	sensorAngles [3]float64,
+	config OrganismConfig,
+) Organism {
+	// Calculate energy capacity based on base value and speed
+	energyCapacity := config.MaximumEnergy + speed*10.0
+
+	// Randomize energy efficiency within the configured range
+	efficiencyRange := config.EnergyEfficiencyRange
+	efficiency := efficiencyRange[0] + rand.Float64()*(efficiencyRange[1]-efficiencyRange[0])
 
 	return Organism{
 		Position:              position,
@@ -47,10 +82,40 @@ func NewOrganism(position Point, heading, chemPreference, speed float64, sensorA
 		SensorAngles:          sensorAngles,
 		PositionHistory:       make([]Point, 0, MaxTrailLength),
 		UpdateCounter:         0,
-		Energy:                energyCapacity * 0.8, // Start with 80% of max energy
+		Energy:                energyCapacity * config.InitialEnergy, // Set based on config
 		EnergyCapacity:        energyCapacity,
 		TimeSinceReproduction: 0,
+
+		// Initialize energy fields from config
+		MetabolicRate:    config.BaseMetabolicRate,
+		MovementCost:     config.MovementCostFactor,
+		SensingCost:      config.SensingCostBase,
+		OptimalGain:      config.OptimalEnergyGainRate,
+		EnergyEfficiency: efficiency, // Randomized efficiency
+
+		// Initialize state flags
+		MarkForRemoval: false,
+		Generation:     1,            // First generation
+		ID:             rand.Int63(), // Random ID
+		ParentID:       0,            // No parent (0 = original organism)
 	}
+}
+
+// NewOrganism creates a new organism with default energy settings
+// This is kept for backward compatibility
+func NewOrganism(position Point, heading, chemPreference, speed float64, sensorAngles [3]float64) Organism {
+	// Define default config
+	defaultConfig := OrganismConfig{
+		InitialEnergy:         0.8,                  // Start with 80% of max energy
+		MaximumEnergy:         100.0,                // Base energy capacity
+		BaseMetabolicRate:     0.1,                  // Energy consumed per second
+		MovementCostFactor:    0.02,                 // Energy cost per unit of movement
+		SensingCostBase:       0.01,                 // Energy cost for sensing operations
+		OptimalEnergyGainRate: 0.5,                  // Maximum energy gain per second
+		EnergyEfficiencyRange: [2]float64{0.8, 1.2}, // Efficiency range
+	}
+
+	return NewOrganismWithConfig(position, heading, chemPreference, speed, sensorAngles, defaultConfig)
 }
 
 // DefaultSensorAngles returns the default angles for sensors: [0, -π/4, π/4]
@@ -174,6 +239,13 @@ func (o *Organism) Reproduce() Organism {
 	// Calculate new energy capacity based on speed
 	newEnergyCapacity := 100.0 + newSpeed*10.0
 
+	// Mutate energy-related attributes
+	metabolicRateMutation := o.mutateValue(o.MetabolicRate, MutationFactorSmall)
+	movementCostMutation := o.mutateValue(o.MovementCost, MutationFactorSmall)
+	sensingCostMutation := o.mutateValue(o.SensingCost, MutationFactorSmall)
+	optimalGainMutation := o.mutateValue(o.OptimalGain, MutationFactorMedium)
+	efficiencyMutation := o.mutateValue(o.EnergyEfficiency, MutationFactorMedium)
+
 	// Create the offspring
 	return Organism{
 		Position:              offspringPosition,
@@ -187,5 +259,55 @@ func (o *Organism) Reproduce() Organism {
 		Energy:                offspringEnergy,
 		EnergyCapacity:        newEnergyCapacity,
 		TimeSinceReproduction: 0,
+
+		// Mutated energy attributes
+		MetabolicRate:    metabolicRateMutation,
+		MovementCost:     movementCostMutation,
+		SensingCost:      sensingCostMutation,
+		OptimalGain:      optimalGainMutation,
+		EnergyEfficiency: efficiencyMutation,
+
+		// State flags and lineage
+		MarkForRemoval: false,
+		Generation:     o.Generation + 1, // Increment generation
+		ID:             rand.Int63(),     // New random ID
+		ParentID:       o.ID,             // Set parent ID for lineage tracking
+	}
+}
+
+// mutateValue applies a random mutation to a value
+func (o *Organism) mutateValue(value float64, mutationFactor float64) float64 {
+	// Add a normally distributed mutation
+	mutation := rand.NormFloat64() * value * mutationFactor
+
+	// Apply mutation, ensuring the result is positive
+	return math.Max(0.001, value+mutation)
+}
+
+// UpdateEnergy updates the organism's energy based on metabolism, movement, and environment
+func (o *Organism) UpdateEnergy(world interface {
+	GetConcentrationAt(Point) float64
+}, deltaTime float64) {
+	// Base metabolic cost (just existing)
+	o.Energy -= o.MetabolicRate * o.EnergyEfficiency * deltaTime
+
+	// Energy gain from environment if in preferred concentration
+	concentration := world.GetConcentrationAt(o.Position)
+	similarityFactor := 1.0 - math.Min(math.Abs(concentration-o.ChemPreference)/o.ChemPreference, 1.0)
+
+	// Only gain energy if similarity is high enough (above 70% match)
+	if similarityFactor > 0.7 {
+		// Scale gain by how close we are to perfect match
+		gainFactor := (similarityFactor - 0.7) / 0.3 // Normalize to 0-1 range
+		energyGain := o.OptimalGain * gainFactor * deltaTime
+
+		// Add energy, capped at max capacity
+		o.Energy = math.Min(o.Energy+energyGain, o.EnergyCapacity)
+	}
+
+	// Check for death condition
+	if o.Energy <= 0 {
+		o.Energy = 0
+		o.MarkForRemoval = true
 	}
 }

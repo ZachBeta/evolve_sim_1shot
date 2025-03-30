@@ -64,6 +64,9 @@ func Update(
 	turnSpeed float64,
 	deltaTime float64,
 ) {
+	// Apply sensing cost before reading sensors
+	org.Energy -= org.SensingCost * org.EnergyEfficiency * deltaTime
+
 	// Read sensors
 	readings := ReadSensors(org, world, sensorDistance)
 
@@ -80,30 +83,17 @@ func Update(
 		// Continue straight, no turning needed
 	}
 
-	// Move forward (this now includes energy consumption)
+	// Move forward (this includes energy consumption for movement)
 	Move(org, bounds, deltaTime)
 
-	// Energy gain from being in preferred environment
-	currentConcentration := world.GetConcentrationAt(org.Position)
-	concentrationDiff := math.Abs(currentConcentration - org.ChemPreference)
+	// Update energy status - gain from optimal environment, lose from metabolism
+	org.UpdateEnergy(world, deltaTime)
 
-	// Calculate how close the organism is to its preferred concentration (0-1 scale)
-	// 1.0 means perfect match, 0.0 means furthest possible
-	concentrationFit := 1.0 - math.Min(concentrationDiff/(org.ChemPreference+1.0), 1.0)
-
-	if concentrationFit > ENERGY_GAIN_THRESHOLD {
-		// Scale energy gain by how good the fit is
-		gainFactor := (concentrationFit - ENERGY_GAIN_THRESHOLD) / (1.0 - ENERGY_GAIN_THRESHOLD)
-		energyGain := gainFactor * MAX_ENERGY_GAIN * deltaTime
-
-		// Add energy, capped at max capacity
-		oldEnergy := org.Energy
-		org.Energy = math.Min(org.Energy+energyGain, org.EnergyCapacity)
-		actualEnergyGain := org.Energy - oldEnergy
-
-		// Request energy depletion from nearby sources
-		if actualEnergyGain > 0 {
-			world.DepleteEnergyFromSourcesAt(org.Position, actualEnergyGain)
-		}
+	// If energy is depleted, mark for removal
+	if org.Energy <= 0 {
+		org.MarkForRemoval = true
 	}
+
+	// Update reproduction timer
+	org.TimeSinceReproduction += deltaTime
 }

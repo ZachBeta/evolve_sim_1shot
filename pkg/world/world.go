@@ -290,13 +290,25 @@ func (w *World) PopulateWorld(cfg config.SimulationConfig) {
 		// Normal distribution for chemical preference
 		preference := rng.NormFloat64()*cfg.Organism.PreferenceDistributionStdDev + cfg.Organism.PreferenceDistributionMean
 
-		// Create and add organism
-		organism := types.NewOrganism(
+		// Create organism config from simulation config
+		organismConfig := types.OrganismConfig{
+			InitialEnergy:         cfg.Energy.InitialEnergy,
+			MaximumEnergy:         cfg.Energy.MaximumEnergy,
+			BaseMetabolicRate:     cfg.Energy.BaseMetabolicRate,
+			MovementCostFactor:    cfg.Energy.MovementCostFactor,
+			SensingCostBase:       cfg.Energy.SensingCostBase,
+			OptimalEnergyGainRate: cfg.Energy.OptimalEnergyGainRate,
+			EnergyEfficiencyRange: cfg.Energy.EnergyEfficiencyRange,
+		}
+
+		// Create and add organism with energy configuration
+		organism := types.NewOrganismWithConfig(
 			types.Point{X: x, Y: y},
 			heading,
 			preference,
 			cfg.Organism.Speed,
 			types.DefaultSensorAngles(),
+			organismConfig,
 		)
 		w.World.AddOrganism(organism)
 	}
@@ -393,17 +405,30 @@ func (w *World) RemoveDeadOrganisms() int {
 
 // Reproduction and population constants
 const (
-	MaxOrganismCount = 1000 // Maximum number of organisms allowed in the world
+	DefaultMaxOrganismCount = 1000 // Default maximum number of organisms allowed in the world
 )
 
 // ProcessReproduction checks all organisms for reproduction eligibility
 // and creates offspring as needed
 func (w *World) ProcessReproduction() int {
+	return w.ProcessReproductionWithConfig(config.ReproductionConfig{
+		MaxPopulation: DefaultMaxOrganismCount,
+	})
+}
+
+// ProcessReproductionWithConfig checks all organisms for reproduction eligibility
+// and creates offspring based on the provided configuration
+func (w *World) ProcessReproductionWithConfig(cfg config.ReproductionConfig) int {
 	w.organismMutex.Lock()
 	defer w.organismMutex.Unlock()
 
+	maxPopulation := cfg.MaxPopulation
+	if maxPopulation <= 0 {
+		maxPopulation = DefaultMaxOrganismCount
+	}
+
 	// If we've reached the max population, don't allow reproduction
-	if len(w.Organisms) >= MaxOrganismCount {
+	if len(w.Organisms) >= maxPopulation {
 		return 0
 	}
 
@@ -415,7 +440,7 @@ func (w *World) ProcessReproduction() int {
 
 	// Check each organism for reproduction
 	for i := range w.Organisms {
-		if w.Organisms[i].CanReproduce() && len(w.Organisms)+len(newOrganisms) < MaxOrganismCount {
+		if w.Organisms[i].CanReproduce() && len(w.Organisms)+len(newOrganisms) < maxPopulation {
 			// Create a new organism
 			offspring := w.Organisms[i].Reproduce()
 

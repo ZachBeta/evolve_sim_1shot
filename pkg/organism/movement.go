@@ -6,11 +6,6 @@ import (
 	"github.com/zachbeta/evolve_sim/pkg/types"
 )
 
-// Constants for energy system
-const (
-	MOVEMENT_ENERGY_COST = 0.02 // Base energy cost per unit of movement
-)
-
 // Move updates the organism's position based on its heading and speed
 // It handles boundary collisions and adjusts the position and heading accordingly
 func Move(org *types.Organism, bounds types.Rect, deltaTime float64) {
@@ -33,7 +28,8 @@ func Move(org *types.Organism, bounds types.Rect, deltaTime float64) {
 
 	// Consume energy based on distance moved and speed
 	// Faster organisms use more energy per unit distance
-	energyCost := distanceMoved * MOVEMENT_ENERGY_COST * (1.0 + org.Speed*0.05)
+	// Use the organism's MovementCost parameter modified by EnergyEfficiency
+	energyCost := distanceMoved * org.MovementCost * org.EnergyEfficiency * (1.0 + org.Speed*0.05)
 	org.Energy -= energyCost
 
 	// If energy is depleted, reduce speed proportionally

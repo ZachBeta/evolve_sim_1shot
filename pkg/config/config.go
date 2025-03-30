@@ -25,6 +25,27 @@ type OrganismConfig struct {
 	PreferenceDistributionStdDev float64 `json:"preferenceDistributionStdDev"`
 }
 
+// EnergyConfig holds settings for the energy system
+type EnergyConfig struct {
+	InitialEnergy         float64    `json:"initialEnergy"`         // Starting energy for new organisms
+	MaximumEnergy         float64    `json:"maximumEnergy"`         // Maximum energy capacity
+	BaseMetabolicRate     float64    `json:"baseMetabolicRate"`     // Energy consumed per second just existing
+	MovementCostFactor    float64    `json:"movementCostFactor"`    // Energy cost per unit of movement
+	SensingCostBase       float64    `json:"sensingCostBase"`       // Energy cost for sensor operations
+	OptimalEnergyGainRate float64    `json:"optimalEnergyGainRate"` // Maximum energy gain per second
+	EnergyEfficiencyRange [2]float64 `json:"energyEfficiencyRange"` // Min/max for random initialization
+}
+
+// ReproductionConfig holds settings for the reproduction system
+type ReproductionConfig struct {
+	ReproductionThreshold float64 `json:"reproductionThreshold"` // Energy required to reproduce
+	EnergyTransferRatio   float64 `json:"energyTransferRatio"`   // Portion of energy given to offspring
+	OffspringDistance     float64 `json:"offspringDistance"`     // How far offspring spawns from parent
+	MutationRate          float64 `json:"mutationRate"`          // Probability of trait mutation
+	MutationMagnitude     float64 `json:"mutationMagnitude"`     // Maximum percent change when mutation occurs
+	MaxPopulation         int     `json:"maxPopulation"`         // Optional cap on total population
+}
+
 // ChemicalConfig holds settings for chemical sources
 type ChemicalConfig struct {
 	Count          int     `json:"count"`
@@ -50,13 +71,15 @@ type RenderConfig struct {
 
 // SimulationConfig holds all configuration for the simulation
 type SimulationConfig struct {
-	Version         string         `json:"version"`
-	World           WorldConfig    `json:"world"`
-	Organism        OrganismConfig `json:"organism"`
-	Chemical        ChemicalConfig `json:"chemical"`
-	Render          RenderConfig   `json:"render"`
-	RandomSeed      int64          `json:"randomSeed"`
-	SimulationSpeed float64        `json:"simulationSpeed"`
+	Version         string             `json:"version"`
+	World           WorldConfig        `json:"world"`
+	Organism        OrganismConfig     `json:"organism"`
+	Chemical        ChemicalConfig     `json:"chemical"`
+	Render          RenderConfig       `json:"render"`
+	Energy          EnergyConfig       `json:"energy"`       // New energy configuration
+	Reproduction    ReproductionConfig `json:"reproduction"` // New reproduction configuration
+	RandomSeed      int64              `json:"randomSeed"`
+	SimulationSpeed float64            `json:"simulationSpeed"`
 }
 
 // DefaultConfig returns a default configuration with reasonable values
@@ -74,6 +97,23 @@ func DefaultConfig() SimulationConfig {
 			TurnSpeed:                    math.Pi / 10, // 18 degrees per step
 			PreferenceDistributionMean:   50.0,
 			PreferenceDistributionStdDev: 10.0,
+		},
+		Energy: EnergyConfig{
+			InitialEnergy:         80.0,                 // Start with 80% of maximum
+			MaximumEnergy:         100.0,                // Base energy capacity
+			BaseMetabolicRate:     0.1,                  // Energy consumed per second just existing
+			MovementCostFactor:    0.02,                 // Energy cost per unit of movement
+			SensingCostBase:       0.01,                 // Energy cost for sensing operations
+			OptimalEnergyGainRate: 0.5,                  // Maximum energy gain per second
+			EnergyEfficiencyRange: [2]float64{0.8, 1.2}, // Range for random efficiency
+		},
+		Reproduction: ReproductionConfig{
+			ReproductionThreshold: 0.75, // 75% of max energy required to reproduce
+			EnergyTransferRatio:   0.3,  // 30% of energy given to offspring
+			OffspringDistance:     10.0, // Units away from parent
+			MutationRate:          0.2,  // 20% chance of mutation per trait
+			MutationMagnitude:     0.1,  // 10% maximum change when mutation occurs
+			MaxPopulation:         500,  // Maximum allowed population
 		},
 		Chemical: ChemicalConfig{
 			Count:          5,
