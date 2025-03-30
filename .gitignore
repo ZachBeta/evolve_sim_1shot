@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+evolve_sim
 
 # Test binary, built with `go test -c`
 *.test
