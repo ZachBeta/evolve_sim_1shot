@@ -3,8 +3,8 @@
 ## Project Status
 - **Core Implementation:** ✅ Complete (Phases 1-3)
 - **Visualization System:** ✅ Complete (Phase 4)
-- **Current Focus:** 🔄 Organism Selection & UI Refinement
-- **Next Steps:** Planning for performance optimization and future enhancements
+- **Current Focus:** 🔄 Simulation Mechanics
+- **Next Steps:** UI Refinement and Interactive Features
 
 ## Completed Features
 - ✅ Core data structures and world system
@@ -18,28 +18,48 @@
 - ✅ Organism trails for movement visualization
 - ✅ Basic UI with keyboard controls
 
-## Current Priority: Organism Selection
+## Future Enhancements (Prioritized)
 
-Implementation checklist:
-- [ ] Add click detection for organisms
-- [ ] Highlight selected organism
-- [ ] Display organism properties (preference, speed, etc.)
-- [ ] Track selected organism even when moving
-- [ ] Add visual indicators for selected organism's sensors
+### Phase 1: Simulation Mechanics
+1. **Energy System**
+   - Add energy field to Organism
+   - Implement energy gain from optimal concentrations
+   - Add energy cost for movement and actions
+   - Design visualization for energy levels
 
-Rationale: This allows users to inspect individual organisms and understand their behavior in relation to the environment.
+2. **Reproduction System**
+   - Add reproduction threshold to energy system
+   - Create offspring generation method
+   - Handle position and initial energy allocation
+   - Implement mutation of preferences and properties
 
-### Implementation Plan for Organism Selection
+3. **Implementation Plan for Energy System**
+   - Extend Organism struct to include energy field
+   - Modify Update function to consume energy based on movement
+   - Add energy gain when organism is in preferred concentration
+   - Add death mechanism when energy is depleted
+   - Add visualization for organism energy levels
 
-1. **Mouse Input Detection**
+4. **Implementation Plan for Reproduction**
+   - Define reproduction threshold
+   - Create offspring generation algorithm
+   - Implement genetic inheritance with mutations
+   - Handle world population management
+   - Add visual effects for reproduction events
+
+### Phase 2: UI Refinement and Organism Selection
+
+1. **Organism Selection** (Moved from Current Priority)
+   - Add click detection for organisms
+   - Highlight selected organism
+   - Display organism properties (preference, speed, etc.)
+   - Track selected organism even when moving
+   - Add visual indicators for selected organism's sensors
+
+2. **Mouse Input Detection**
    - Add mouse position tracking in renderer
    - Convert screen coordinates to world coordinates
    - Update the renderer to process mouse clicks
-
-2. **Organism Collision Detection**
-   - Implement function to find organism at clicked position
-   - Consider organism size for accurate selection
-   - Handle multiple organisms at the same position (select closest)
 
 3. **Selection UI**
    - Add visual highlight for selected organism (e.g., glowing outline)
@@ -51,32 +71,12 @@ Rationale: This allows users to inspect individual organisms and understand thei
    - Include preference, speed, sensor readings
    - Position panel in a non-intrusive location
 
-5. **Sensor Visualization Enhancement**
-   - Add detailed sensor visualization for selected organism
-   - Show actual concentration values at sensor positions
-   - Use color coding to indicate reading vs. preference match
-
-6. **Testing**
-   - Test selection in various organism density scenarios
-   - Verify selection persists during simulation steps
-   - Ensure UI elements don't interfere with simulation
-
-## Known Issues
-
-### Contour Line Logging
-- Problem: Excessive "Generated 1941 contour lines across 6 levels" logging
-- Solution: Remove or limit debug logging in contour generation code
-- Priority: High (clutters console output) ✅ FIXED
-
-## Future Enhancements (Prioritized)
-
-### Phase 1: UI Refinement
-1. **Complete Organism Selection** (Current Task)
-2. **Fix Control Mappings**
+5. **Control Mappings**
    - Ensure all keys work correctly
    - Add confirmation messages for toggles
+   - Handle key conflicts
 
-### Phase 2: Performance Optimization
+### Phase 3: Performance Optimization
 1. **Profile Application**
    - Add profiling instrumentation
    - Identify bottlenecks
@@ -87,20 +87,18 @@ Rationale: This allows users to inspect individual organisms and understand thei
    - Batch rendering operations
    - Add level-of-detail rendering
 
-### Phase 3: Interactive Features
-1. **Click-to-Place Chemical Sources** (Deprioritized)
+### Phase 4: Interactive Features
+1. **Click-to-Place Chemical Sources**
    - Add mouse position tracking
    - Create method to add sources at clicked position
    - Add visual feedback during placement
 
-### Phase 4: Simulation Mechanics
-1. **Energy System**
-   - Add energy field to Organism
-   - Implement energy gain and costs
-2. **Reproduction System**
-   - Add reproduction threshold
-   - Create offspring generation
-   - Handle mutation
+## Known Issues
+
+### Contour Line Logging
+- Problem: Excessive "Generated 1941 contour lines across 6 levels" logging
+- Solution: Remove or limit debug logging in contour generation code
+- Priority: High (clutters console output) ✅ FIXED
 
 ## Technical Documentation
 
