@@ -1,0 +1,31 @@
+{
+  "world": {
+    "width": 1200.0,
+    "height": 800.0
+  },
+  "organism": {
+    "count": 150,
+    "speed": 1.5,
+    "sensorDistance": 15.0,
+    "turnSpeed": 0.15,
+    "preferenceDistributionMean": 30.0,
+    "preferenceDistributionStdDev": 5.0
+  },
+  "chemical": {
+    "count": 3,
+    "minStrength": 200.0,
+    "maxStrength": 400.0,
+    "minDecayFactor": 0.002,
+    "maxDecayFactor": 0.008
+  },
+  "render": {
+    "windowWidth": 1200,
+    "windowHeight": 800,
+    "frameRate": 60,
+    "showGrid": true,
+    "showConcentration": true,
+    "showSensors": true
+  },
+  "randomSeed": 12345,
+  "simulationSpeed": 1.0
+} 
