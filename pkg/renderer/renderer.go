@@ -545,7 +545,8 @@ func (r *Renderer) updateContourLines() {
 		totalContours += len(contours)
 	}
 
-	fmt.Printf("Generated %d contour lines across %d levels\n", totalContours, len(worldContours))
+	// Comment out the excessive logging statement
+	// fmt.Printf("Generated %d contour lines across %d levels\n", totalContours, len(worldContours))
 
 	// Convert to local representation
 	r.contourCache = make(map[float64][]ContourLine)
