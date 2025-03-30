@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	fmt.Println("Evolutionary Simulator")
+	fmt.Printf("Evolutionary Simulator v%s\n", config.Version)
 	fmt.Println("A simulation of single-cell organisms responding to chemical gradients")
 
 	// Parse command line flags

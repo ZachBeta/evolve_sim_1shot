@@ -6,6 +6,9 @@ import (
 	"os"
 )
 
+// Version is the current application version
+const Version = "0.1.0"
+
 // WorldConfig holds settings for the simulation world
 type WorldConfig struct {
 	Width  float64 `json:"width"`
@@ -45,6 +48,7 @@ type RenderConfig struct {
 
 // SimulationConfig holds all configuration for the simulation
 type SimulationConfig struct {
+	Version         string         `json:"version"`
 	World           WorldConfig    `json:"world"`
 	Organism        OrganismConfig `json:"organism"`
 	Chemical        ChemicalConfig `json:"chemical"`
@@ -56,6 +60,7 @@ type SimulationConfig struct {
 // DefaultConfig returns a default configuration with reasonable values
 func DefaultConfig() SimulationConfig {
 	return SimulationConfig{
+		Version: Version,
 		World: WorldConfig{
 			Width:  1000.0,
 			Height: 1000.0,
