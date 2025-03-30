@@ -14,15 +14,17 @@ A 2D simulation of single-cell organisms responding to chemical gradients in the
 
 ```bash
 # Build the project
-go build -o evolve_sim ./cmd/evolve_sim
+go build -o run_evolve_sim ./cmd/evolve_sim
 
 # Run the simulator
-./evolve_sim
+./run_evolve_sim
 ```
 
 ```bash
 # run tests
 go test -v ./...
+# dev
+go run cmd/evolve_sim/main.go
 ```
 ## Project Structure
 
