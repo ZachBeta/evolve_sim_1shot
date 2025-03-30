@@ -6,6 +6,13 @@ import (
 	"github.com/zachbeta/evolve_sim/pkg/types"
 )
 
+// Energy system constants
+const (
+	ENERGY_GAIN_THRESHOLD = 0.7  // Minimum concentration fit to gain energy (0-1)
+	MAX_ENERGY_GAIN       = 0.5  // Maximum energy gain per second
+	MAX_CONCENTRATION     = 1000 // Maximum expected concentration for normalization
+)
+
 // Direction represents the three possible directions an organism can turn
 type Direction int
 
@@ -45,6 +52,7 @@ func DecideDirection(readings SensorReadings, preference float64) Direction {
 // 2. Decides direction
 // 3. Turns if necessary
 // 4. Moves forward
+// 5. Updates energy based on environment
 func Update(
 	org *types.Organism,
 	world interface{ GetConcentrationAt(types.Point) float64 },
@@ -69,6 +77,23 @@ func Update(
 		// Continue straight, no turning needed
 	}
 
-	// Move forward
+	// Move forward (this now includes energy consumption)
 	Move(org, bounds, deltaTime)
+
+	// Energy gain from being in preferred environment
+	currentConcentration := world.GetConcentrationAt(org.Position)
+	concentrationDiff := math.Abs(currentConcentration - org.ChemPreference)
+
+	// Calculate how close the organism is to its preferred concentration (0-1 scale)
+	// 1.0 means perfect match, 0.0 means furthest possible
+	concentrationFit := 1.0 - math.Min(concentrationDiff/(org.ChemPreference+1.0), 1.0)
+
+	if concentrationFit > ENERGY_GAIN_THRESHOLD {
+		// Scale energy gain by how good the fit is
+		gainFactor := (concentrationFit - ENERGY_GAIN_THRESHOLD) / (1.0 - ENERGY_GAIN_THRESHOLD)
+		energyGain := gainFactor * MAX_ENERGY_GAIN * deltaTime
+
+		// Add energy, capped at max capacity
+		org.Energy = math.Min(org.Energy+energyGain, org.EnergyCapacity)
+	}
 }

@@ -21,6 +21,8 @@ type OrganismStats struct {
 	AverageConcentration    float64
 	PreferenceHistogram     map[string]int // Bucketized preferences
 	PreferenceExposureRatio float64        // Average ratio of preference to actual concentration
+	AverageEnergy           float64        // Average energy level of organisms
+	EnergyRatio             float64        // Average energy as percentage of capacity
 }
 
 // ChemicalStats holds statistics about chemical concentrations
@@ -65,6 +67,8 @@ func calculateOrganismStats(organisms []types.Organism, world interface{ GetConc
 	var concentrationSum float64
 	var preferenceDiffSum float64
 	var exposureRatioSum float64
+	var energySum float64
+	var energyRatioSum float64
 	preferences := make([]float64, len(organisms))
 
 	// Collect data
@@ -98,12 +102,18 @@ func calculateOrganismStats(organisms []types.Organism, world interface{ GetConc
 			}
 			exposureRatioSum += ratio
 		}
+
+		// Add energy statistics
+		energySum += org.Energy
+		energyRatioSum += org.Energy / org.EnergyCapacity
 	}
 
 	// Calculate averages
 	stats.AveragePreference = preferenceSum / float64(len(organisms))
 	stats.AverageConcentration = concentrationSum / float64(len(organisms))
 	stats.PreferenceExposureRatio = exposureRatioSum / float64(len(organisms))
+	stats.AverageEnergy = energySum / float64(len(organisms))
+	stats.EnergyRatio = energyRatioSum / float64(len(organisms))
 
 	// Calculate standard deviation
 	for _, pref := range preferences {

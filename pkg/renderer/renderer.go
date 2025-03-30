@@ -13,6 +13,12 @@ import (
 	"github.com/zachbeta/evolve_sim/pkg/world"
 )
 
+// ReproductionEvent tracks visual effects for organism reproduction
+type ReproductionEvent struct {
+	Position types.Point // Position of reproduction
+	TimeLeft float64     // Time left for this effect (in seconds)
+}
+
 // Renderer is responsible for visualizing the simulation
 type Renderer struct {
 	World               *world.World
@@ -38,7 +44,9 @@ type Renderer struct {
 	interpolationFactor float64 // For smooth animations between frames
 	triangleImage       *ebiten.Image
 	triangleOpts        ebiten.DrawImageOptions
-	selectedOrganism    *types.Organism // For future organism selection feature
+	selectedOrganism    *types.Organism     // For future organism selection feature
+	reproductionEvents  []ReproductionEvent // Track reproduction visual effects
+	previousOrgCount    int                 // To detect reproduction events
 }
 
 // ContourLine is a local representation of the world's ContourLine
@@ -59,6 +67,9 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 
 	// Define default contour levels
 	contourLevels := []float64{10, 20, 50, 100, 200, 500}
+
+	// Get initial organism count
+	initialCount, _ := world.GetPopulationInfo()
 
 	// Create a new renderer
 	r := &Renderer{
@@ -82,6 +93,8 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 		contourCache:        make(map[float64][]ContourLine),
 		lastContourUpdate:   0,
 		interpolationFactor: 1.0, // Default to full interpolation
+		reproductionEvents:  make([]ReproductionEvent, 0),
+		previousOrgCount:    initialCount,
 	}
 
 	// Create a triangle image for optimized drawing
@@ -112,6 +125,9 @@ func (r *Renderer) Update() error {
 
 	// Update FPS
 	r.FPS = ebiten.ActualFPS()
+
+	// Update reproduction events
+	r.updateReproductionEvents(r.Simulator.TimeStep * r.Simulator.SimulationSpeed)
 
 	// Update contour lines every 0.5 seconds if showing contours
 	if r.ShowContours && r.Simulator.Time-r.lastContourUpdate > 0.5 {
@@ -204,8 +220,16 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 	// Draw organisms
 	r.drawOrganisms(screen)
 
+	// Draw reproduction events
+	r.drawReproductionEvents(screen)
+
 	// Draw statistics
 	r.drawStats(screen)
+
+	// Draw concentration legend if enabled
+	if r.ShowLegend && r.ShowConcentration {
+		r.drawConcentrationLegend(screen)
+	}
 }
 
 // Layout returns the logical screen dimensions
@@ -371,14 +395,24 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 		// Convert world coordinates to screen coordinates
 		screenX, screenY := r.worldToScreen(org.Position)
 
-		// Determine color based on chemical preference
+		// Determine base color based on chemical preference
 		// Map preference to a blue-to-red gradient
 		prefRange := r.Config.Organism.PreferenceDistributionMean * 3
 		normalizedPref := org.ChemPreference / prefRange
 
-		red := uint8(normalizedPref * 255)
-		blue := uint8((1 - normalizedPref) * 255)
-		green := uint8(128 - math.Abs(float64(normalizedPref*255-128)))
+		baseRed := uint8(normalizedPref * 255)
+		baseBlue := uint8((1 - normalizedPref) * 255)
+		baseGreen := uint8(128 - math.Abs(float64(normalizedPref*255-128)))
+
+		// Modify color based on energy level
+		// Low energy organisms appear darker/more transparent
+		energyRatio := org.Energy / org.EnergyCapacity
+		red := uint8(float64(baseRed) * math.Sqrt(energyRatio))
+		green := uint8(float64(baseGreen) * math.Sqrt(energyRatio))
+		blue := uint8(float64(baseBlue) * math.Sqrt(energyRatio))
+
+		// Full alpha for the organism itself
+		alpha := uint8(255)
 
 		// Draw trail if enabled
 		if r.ShowTrails && len(org.PositionHistory) > 1 {
@@ -392,8 +426,8 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 				x2, y2 := r.worldToScreen(org.PositionHistory[i+1])
 
 				// Fade the trail as it gets older
-				alpha := uint8(40 + (160 * i / len(org.PositionHistory)))
-				fadedColor := color.RGBA{red, green, blue, alpha}
+				trailAlpha := uint8(40 + (160 * i / len(org.PositionHistory)))
+				fadedColor := color.RGBA{red, green, blue, trailAlpha}
 
 				// Draw the line
 				ebitenutil.DrawLine(screen, x1, y1, x2, y2, fadedColor)
@@ -410,7 +444,9 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 		visualHeading := org.PreviousHeading + (org.Heading-org.PreviousHeading)*r.interpolationFactor
 
 		// Define triangle size (can be adjusted based on organism properties)
-		size := 4.0
+		// Scale size slightly with energy level for visual feedback
+		sizeMultiplier := 0.8 + 0.4*energyRatio // Size reduced by up to 20% when low energy
+		size := 4.0 * sizeMultiplier
 
 		// Calculate triangle vertices
 		// The triangle should point in the direction of heading
@@ -432,12 +468,32 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 
 		// Draw the triangle
 		r.drawTriangle(screen, frontX, frontY, leftX, leftY, rightX, rightY,
-			color.RGBA{red, green, blue, 255})
+			color.RGBA{red, green, blue, alpha})
 
 		// Add a border for better visibility
-		ebitenutil.DrawLine(screen, frontX, frontY, leftX, leftY, color.RGBA{255, 255, 255, 200})
-		ebitenutil.DrawLine(screen, leftX, leftY, rightX, rightY, color.RGBA{255, 255, 255, 200})
-		ebitenutil.DrawLine(screen, rightX, rightY, frontX, frontY, color.RGBA{255, 255, 255, 200})
+		borderAlpha := uint8(150 + 50*energyRatio) // Border fades a bit when low energy
+		ebitenutil.DrawLine(screen, frontX, frontY, leftX, leftY, color.RGBA{255, 255, 255, borderAlpha})
+		ebitenutil.DrawLine(screen, leftX, leftY, rightX, rightY, color.RGBA{255, 255, 255, borderAlpha})
+		ebitenutil.DrawLine(screen, rightX, rightY, frontX, frontY, color.RGBA{255, 255, 255, borderAlpha})
+
+		// Draw energy indicator (small bar above organism)
+		if energyRatio < 0.99 { // Only draw when not full
+			barWidth := 8.0
+			barHeight := 1.5
+			barX := screenX - barWidth/2
+			barY := screenY - size*2
+
+			// Background (empty) bar
+			ebitenutil.DrawRect(screen, barX, barY, barWidth, barHeight, color.RGBA{40, 40, 40, 200})
+
+			// Filled portion based on energy
+			fillWidth := barWidth * energyRatio
+
+			// Color goes from red (low) to green (high)
+			barRed := uint8(255 * (1 - energyRatio))
+			barGreen := uint8(255 * energyRatio)
+			ebitenutil.DrawRect(screen, barX, barY, fillWidth, barHeight, color.RGBA{barRed, barGreen, 0, 230})
+		}
 
 		// Draw sensors if enabled
 		if r.ShowSensors {
@@ -461,6 +517,9 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		fmt.Sprintf("Speed: %.1fx", r.Simulator.SimulationSpeed),
 		fmt.Sprintf("Paused: %v", r.Simulator.IsPaused),
 		fmt.Sprintf("Avg Preference: %.1f", r.Stats.Organisms.AveragePreference),
+		fmt.Sprintf("Avg Energy: %.1f (%.0f%%)",
+			r.Stats.Organisms.AverageEnergy,
+			r.Stats.Organisms.EnergyRatio*100),
 		fmt.Sprintf("Color Scheme: %s", r.CurrentColorScheme.Name),
 		fmt.Sprintf("Grid: %v", r.ShowGrid),
 		fmt.Sprintf("Contours: %v", r.ShowContours),
@@ -666,4 +725,81 @@ func pointInTriangle(px, py, x1, y1, x2, y2, x3, y3 float64) bool {
 
 	// Point is in triangle if all coordinates are between 0 and 1
 	return alpha >= 0 && beta >= 0 && gamma >= 0 && alpha <= 1 && beta <= 1 && gamma <= 1
+}
+
+// Add a reproduction event at the specified position
+func (r *Renderer) AddReproductionEvent(position types.Point) {
+	r.reproductionEvents = append(r.reproductionEvents, ReproductionEvent{
+		Position: position,
+		TimeLeft: 1.0, // 1 second duration
+	})
+}
+
+// Update reproduction events (fade out over time)
+func (r *Renderer) updateReproductionEvents(deltaTime float64) {
+	// If we have too many events, trim the list to prevent memory issues
+	if len(r.reproductionEvents) > 100 {
+		r.reproductionEvents = r.reproductionEvents[len(r.reproductionEvents)-100:]
+	}
+
+	// Update existing events
+	updatedEvents := make([]ReproductionEvent, 0, len(r.reproductionEvents))
+	for _, event := range r.reproductionEvents {
+		event.TimeLeft -= deltaTime
+		if event.TimeLeft > 0 {
+			updatedEvents = append(updatedEvents, event)
+		}
+	}
+	r.reproductionEvents = updatedEvents
+
+	// Check for new reproduction events by comparing organism count
+	currentCount, _ := r.World.GetPopulationInfo()
+	if currentCount > r.previousOrgCount {
+		// Get the newest organisms for visual effects
+		organisms := r.World.GetOrganisms()
+		if len(organisms) > 0 {
+			// Just add an effect at the newest organism position (the last in the list)
+			// In a more sophisticated implementation, we'd track exact reproduction events
+			r.AddReproductionEvent(organisms[len(organisms)-1].Position)
+		}
+	}
+	r.previousOrgCount = currentCount
+}
+
+// Draw reproduction events as expanding circles
+func (r *Renderer) drawReproductionEvents(screen *ebiten.Image) {
+	for _, event := range r.reproductionEvents {
+		// Convert world coordinates to screen coordinates
+		screenX, screenY := r.worldToScreen(event.Position)
+
+		// Calculate radius based on time left (grows then shrinks)
+		timeProgress := 1.0 - event.TimeLeft
+		radius := 10.0 * math.Sin(timeProgress*math.Pi) // Sine wave for smooth animation
+
+		// Calculate alpha (fades out)
+		alpha := uint8(255 * event.TimeLeft)
+
+		// Draw a series of concentric circles with decreasing alpha
+		for i := 0; i < 3; i++ {
+			innerRadius := radius * float64(i+1) * 0.5
+			innerAlpha := alpha / uint8(i+1)
+
+			// Yellow-orange glow for reproduction
+			glowColor := color.RGBA{255, 200, 50, innerAlpha}
+
+			// Draw the circle approximately using line segments
+			const segments = 12
+			for j := 0; j < segments; j++ {
+				angle1 := float64(j) * 2 * math.Pi / segments
+				angle2 := float64(j+1) * 2 * math.Pi / segments
+
+				x1 := screenX + math.Cos(angle1)*innerRadius
+				y1 := screenY + math.Sin(angle1)*innerRadius
+				x2 := screenX + math.Cos(angle2)*innerRadius
+				y2 := screenY + math.Sin(angle2)*innerRadius
+
+				ebitenutil.DrawLine(screen, x1, y1, x2, y2, glowColor)
+			}
+		}
+	}
 }

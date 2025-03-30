@@ -330,3 +330,102 @@ func (w *World) GetConcentrationGrid() *ConcentrationGrid {
 
 	return w.concentrationGrid
 }
+
+// RemoveOrganism removes an organism at the specified index
+func (w *World) RemoveOrganism(index int) bool {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	if index < 0 || index >= len(w.Organisms) {
+		return false
+	}
+
+	// Remove the organism by replacing it with the last one and truncating
+	w.Organisms[index] = w.Organisms[len(w.Organisms)-1]
+	w.Organisms = w.Organisms[:len(w.Organisms)-1]
+	return true
+}
+
+// RemoveDeadOrganisms removes all organisms with zero or negative energy
+func (w *World) RemoveDeadOrganisms() int {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	aliveOrganisms := make([]types.Organism, 0, len(w.Organisms))
+	removedCount := 0
+
+	// Keep only organisms with positive energy
+	for _, org := range w.Organisms {
+		if org.Energy > 0 {
+			aliveOrganisms = append(aliveOrganisms, org)
+		} else {
+			removedCount++
+		}
+	}
+
+	// Update the organisms list
+	w.Organisms = aliveOrganisms
+	return removedCount
+}
+
+// Reproduction and population constants
+const (
+	MaxOrganismCount = 1000 // Maximum number of organisms allowed in the world
+)
+
+// ProcessReproduction checks all organisms for reproduction eligibility
+// and creates offspring as needed
+func (w *World) ProcessReproduction() int {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	// If we've reached the max population, don't allow reproduction
+	if len(w.Organisms) >= MaxOrganismCount {
+		return 0
+	}
+
+	// Create a slice to hold new organisms
+	newOrganisms := make([]types.Organism, 0)
+
+	// Track how many new organisms were created
+	reproductionCount := 0
+
+	// Check each organism for reproduction
+	for i := range w.Organisms {
+		if w.Organisms[i].CanReproduce() && len(w.Organisms)+len(newOrganisms) < MaxOrganismCount {
+			// Create a new organism
+			offspring := w.Organisms[i].Reproduce()
+
+			// Ensure the offspring is within world bounds
+			if w.Boundaries.Contains(offspring.Position) {
+				newOrganisms = append(newOrganisms, offspring)
+				reproductionCount++
+			}
+		}
+	}
+
+	// Add all new organisms to the world
+	w.Organisms = append(w.Organisms, newOrganisms...)
+
+	return reproductionCount
+}
+
+// GetPopulationInfo returns information about the current population
+func (w *World) GetPopulationInfo() (int, float64) {
+	w.mutex.RLock()
+	defer w.mutex.RUnlock()
+
+	count := len(w.Organisms)
+	avgEnergy := 0.0
+
+	// Calculate average energy
+	for _, org := range w.Organisms {
+		avgEnergy += org.Energy
+	}
+
+	if count > 0 {
+		avgEnergy /= float64(count)
+	}
+
+	return count, avgEnergy
+}
