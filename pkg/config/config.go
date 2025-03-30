@@ -39,6 +39,7 @@ type RenderConfig struct {
 	ShowGrid          bool `json:"showGrid"`
 	ShowConcentration bool `json:"showConcentration"`
 	ShowSensors       bool `json:"showSensors"`
+	ShowLegend        bool `json:"showLegend"`
 }
 
 // SimulationConfig holds all configuration for the simulation
@@ -80,6 +81,7 @@ func DefaultConfig() SimulationConfig {
 			ShowGrid:          true,
 			ShowConcentration: true,
 			ShowSensors:       true,
+			ShowLegend:        true,
 		},
 		RandomSeed:      0, // 0 means use current time as seed
 		SimulationSpeed: 1.0,

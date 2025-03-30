@@ -15,32 +15,48 @@ import (
 
 // Renderer is responsible for visualizing the simulation
 type Renderer struct {
-	World             *world.World
-	Simulator         *simulation.Simulator
-	Config            config.SimulationConfig
-	WindowWidth       int
-	WindowHeight      int
-	ShowGrid          bool
-	ShowConcentration bool
-	ShowSensors       bool
-	Stats             simulation.SimulationStats
-	FPS               float64
-	keyStates         map[ebiten.Key]bool
+	World              *world.World
+	Simulator          *simulation.Simulator
+	Config             config.SimulationConfig
+	WindowWidth        int
+	WindowHeight       int
+	ShowGrid           bool
+	ShowConcentration  bool
+	ShowSensors        bool
+	ShowLegend         bool
+	Stats              simulation.SimulationStats
+	FPS                float64
+	keyStates          map[ebiten.Key]bool
+	CurrentColorScheme ColorScheme
+	ColorSchemes       []ColorScheme
+	CurrentSchemeIndex int
 }
 
 // NewRenderer creates a new renderer with the given configuration
 func NewRenderer(world *world.World, simulator *simulation.Simulator, config config.SimulationConfig) *Renderer {
+	// Initialize available color schemes
+	colorSchemes := []ColorScheme{
+		ViridisScheme, // Default
+		MagmaScheme,
+		PlasmaScheme,
+		ClassicScheme,
+	}
+
 	return &Renderer{
-		World:             world,
-		Simulator:         simulator,
-		Config:            config,
-		WindowWidth:       config.Render.WindowWidth,
-		WindowHeight:      config.Render.WindowHeight,
-		ShowGrid:          config.Render.ShowGrid,
-		ShowConcentration: config.Render.ShowConcentration,
-		ShowSensors:       config.Render.ShowSensors,
-		FPS:               0,
-		keyStates:         make(map[ebiten.Key]bool),
+		World:              world,
+		Simulator:          simulator,
+		Config:             config,
+		WindowWidth:        config.Render.WindowWidth,
+		WindowHeight:       config.Render.WindowHeight,
+		ShowGrid:           config.Render.ShowGrid,
+		ShowConcentration:  config.Render.ShowConcentration,
+		ShowSensors:        config.Render.ShowSensors,
+		ShowLegend:         config.Render.ShowLegend,
+		FPS:                0,
+		keyStates:          make(map[ebiten.Key]bool),
+		CurrentColorScheme: ViridisScheme,
+		ColorSchemes:       colorSchemes,
+		CurrentSchemeIndex: 0,
 	}
 }
 
@@ -82,6 +98,16 @@ func (r *Renderer) Update() error {
 
 	if r.isKeyJustPressed(ebiten.KeyS) {
 		r.ShowSensors = !r.ShowSensors
+	}
+
+	if r.isKeyJustPressed(ebiten.KeyL) {
+		r.ShowLegend = !r.ShowLegend
+	}
+
+	// Cycle through color schemes
+	if r.isKeyJustPressed(ebiten.KeyM) {
+		r.CurrentSchemeIndex = (r.CurrentSchemeIndex + 1) % len(r.ColorSchemes)
+		r.CurrentColorScheme = r.ColorSchemes[r.CurrentSchemeIndex]
 	}
 
 	// Speed control - these can respond continuously
@@ -150,8 +176,8 @@ func (r *Renderer) drawChemicalConcentration(screen *ebiten.Image) {
 	height := bounds.Max.Y - bounds.Min.Y
 
 	// Define grid resolution for visualization (lower = higher performance)
-	cellSizeX := float64(r.WindowWidth) / 40
-	cellSizeY := float64(r.WindowHeight) / 40
+	cellSizeX := float64(r.WindowWidth) / 80 // Increased resolution
+	cellSizeY := float64(r.WindowHeight) / 80
 
 	// Get concentration stats for color scaling
 	maxConcentration := r.Stats.Chemicals.MaxConcentration
@@ -176,25 +202,21 @@ func (r *Renderer) drawChemicalConcentration(screen *ebiten.Image) {
 			// Normalize concentration for color mapping (0.0 to 1.0)
 			normalizedConc := math.Min(1.0, concentration/maxConcentration)
 
-			// Color mapping: blue (low) to red (high) through green
-			var cellColor color.RGBA
-			if normalizedConc < 0.5 {
-				// Blue to Green (0.0 to 0.5)
-				t := normalizedConc * 2
-				cellColor = color.RGBA{
-					R: 0,
-					G: uint8(255 * t),
-					B: uint8(255 * (1 - t)),
-					A: 100, // Semi-transparent
-				}
-			} else {
-				// Green to Red (0.5 to 1.0)
-				t := (normalizedConc - 0.5) * 2
-				cellColor = color.RGBA{
-					R: uint8(255 * t),
-					G: uint8(255 * (1 - t)),
-					B: 0,
-					A: 100, // Semi-transparent
+			// Get color from current scheme
+			cellColor := GetColorFromScheme(r.CurrentColorScheme, normalizedConc)
+
+			// Apply transparency
+			cellColor.A = 130 // Semi-transparent
+
+			// Apply a small amount of smoothing to reduce banding
+			if screenX > 0 && screenY > 0 && screenX < r.WindowWidth-int(cellSizeX) && screenY < r.WindowHeight-int(cellSizeY) {
+				// Simple box blur-like effect by slightly blending with neighbors
+				// This is a simplified version - a full implementation would be more complex
+				smoothingFactor := 0.2
+				if normalizedConc > 0 && normalizedConc < 1 {
+					// Only apply smoothing to non-extreme values
+					jitter := (math.Sin(float64(screenX)*0.1) + math.Cos(float64(screenY)*0.1)) * smoothingFactor
+					normalizedConc += jitter * 0.01 // Subtle dithering effect
 				}
 			}
 
@@ -208,6 +230,52 @@ func (r *Renderer) drawChemicalConcentration(screen *ebiten.Image) {
 			}
 		}
 	}
+
+	// Draw legend if enabled
+	if r.ShowLegend {
+		r.drawConcentrationLegend(screen)
+	}
+}
+
+// Draw a legend for the concentration visualization
+func (r *Renderer) drawConcentrationLegend(screen *ebiten.Image) {
+	// Position in bottom-right corner
+	legendWidth := 150
+	legendHeight := 20
+	padding := 10
+	x := r.WindowWidth - legendWidth - padding
+	y := r.WindowHeight - legendHeight - padding
+
+	// Draw legend background
+	for ly := 0; ly < legendHeight; ly++ {
+		for lx := 0; lx < legendWidth; lx++ {
+			position := float64(lx) / float64(legendWidth)
+			color := GetColorFromScheme(r.CurrentColorScheme, position)
+			color.A = 200 // More opaque for the legend
+			screen.Set(x+lx, y+ly, color)
+		}
+	}
+
+	// Draw border
+	for lx := 0; lx < legendWidth; lx++ {
+		screen.Set(x+lx, y-1, color.RGBA{200, 200, 200, 255})
+		screen.Set(x+lx, y+legendHeight, color.RGBA{200, 200, 200, 255})
+	}
+	for ly := -1; ly <= legendHeight; ly++ {
+		screen.Set(x-1, y+ly, color.RGBA{200, 200, 200, 255})
+		screen.Set(x+legendWidth, y+ly, color.RGBA{200, 200, 200, 255})
+	}
+
+	// Draw min/max labels
+	minLabel := "0.0"
+	maxLabel := fmt.Sprintf("%.1f", r.Stats.Chemicals.MaxConcentration)
+
+	ebitenutil.DebugPrintAt(screen, minLabel, x, y-15)
+	ebitenutil.DebugPrintAt(screen, maxLabel, x+legendWidth-30, y-15)
+
+	// Draw scheme name
+	schemeName := r.CurrentColorScheme.Name
+	ebitenutil.DebugPrintAt(screen, schemeName, x+legendWidth/2-20, y+legendHeight+5)
 }
 
 // Draw chemical sources
@@ -292,6 +360,7 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		fmt.Sprintf("Speed: %.1fx", r.Simulator.SimulationSpeed),
 		fmt.Sprintf("Paused: %v", r.Simulator.IsPaused),
 		fmt.Sprintf("Avg Preference: %.1f", r.Stats.Organisms.AveragePreference),
+		fmt.Sprintf("Color Scheme: %s", r.CurrentColorScheme.Name),
 	}
 
 	// Draw stats in the top-left corner
@@ -306,6 +375,8 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		"G: Toggle Grid",
 		"C: Toggle Concentration",
 		"S: Toggle Sensors",
+		"L: Toggle Legend",
+		"M: Cycle Color Schemes",
 		"+/-: Adjust Speed",
 	}
 
