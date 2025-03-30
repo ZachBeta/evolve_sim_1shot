@@ -201,16 +201,10 @@ func (w *World) InitializeConcentrationGrid(resolution float64) {
 
 	grid := NewConcentrationGrid(w.Width, w.Height, resolution)
 
-	// Calculate concentration at each grid point
-	for x := 0; x < grid.NumCellsX; x++ {
-		for y := 0; y < grid.NumCellsY; y++ {
-			worldX := float64(x) * grid.CellSize
-			worldY := float64(y) * grid.CellSize
-			point := types.Point{X: worldX, Y: worldY}
-			concentration := w.World.GetConcentrationAt(point)
-			grid.SetConcentration(x, y, concentration)
-		}
-	}
+	// Instead of calculating concentrations at each grid point,
+	// just give the grid a reference to our chemical sources
+	sources := w.GetChemicalSources()
+	grid.SetSources(sources)
 
 	w.concentrationGrid = grid
 }

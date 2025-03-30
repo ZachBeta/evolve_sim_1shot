@@ -27,10 +27,8 @@ type Renderer struct {
 	WindowWidth         int
 	WindowHeight        int
 	ShowGrid            bool
-	ShowConcentration   bool
 	ShowSensors         bool
 	ShowLegend          bool
-	ShowContours        bool
 	ShowTrails          bool
 	Stats               simulation.SimulationStats
 	FPS                 float64
@@ -38,21 +36,12 @@ type Renderer struct {
 	CurrentColorScheme  ColorScheme
 	ColorSchemes        []ColorScheme
 	CurrentSchemeIndex  int
-	ContourLevels       []float64
-	contourCache        map[float64][]ContourLine
-	lastContourUpdate   float64
 	interpolationFactor float64 // For smooth animations between frames
 	triangleImage       *ebiten.Image
 	triangleOpts        ebiten.DrawImageOptions
 	selectedOrganism    *types.Organism     // For future organism selection feature
 	reproductionEvents  []ReproductionEvent // Track reproduction visual effects
 	previousOrgCount    int                 // To detect reproduction events
-}
-
-// ContourLine is a local representation of the world's ContourLine
-type ContourLine struct {
-	Level  float64
-	Points []types.Point
 }
 
 // NewRenderer creates a new renderer with the given configuration
@@ -65,9 +54,6 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 		ClassicScheme,
 	}
 
-	// Define default contour levels
-	contourLevels := []float64{10, 20, 50, 100, 200, 500}
-
 	// Get initial organism count
 	initialCount, _ := world.GetPopulationInfo()
 
@@ -79,19 +65,14 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 		WindowWidth:         config.Render.WindowWidth,
 		WindowHeight:        config.Render.WindowHeight,
 		ShowGrid:            config.Render.ShowGrid,
-		ShowConcentration:   config.Render.ShowConcentration,
 		ShowSensors:         config.Render.ShowSensors,
 		ShowLegend:          config.Render.ShowLegend,
-		ShowContours:        config.Render.ShowContours,
 		ShowTrails:          false, // Default to false, can be toggled
 		FPS:                 0,
 		keyStates:           make(map[ebiten.Key]bool),
 		CurrentColorScheme:  ViridisScheme,
 		ColorSchemes:        colorSchemes,
 		CurrentSchemeIndex:  0,
-		ContourLevels:       contourLevels,
-		contourCache:        make(map[float64][]ContourLine),
-		lastContourUpdate:   0,
 		interpolationFactor: 1.0, // Default to full interpolation
 		reproductionEvents:  make([]ReproductionEvent, 0),
 		previousOrgCount:    initialCount,
@@ -129,12 +110,6 @@ func (r *Renderer) Update() error {
 	// Update reproduction events
 	r.updateReproductionEvents(r.Simulator.TimeStep * r.Simulator.SimulationSpeed)
 
-	// Update contour lines every 0.5 seconds if showing contours
-	if r.ShowContours && r.Simulator.Time-r.lastContourUpdate > 0.5 {
-		r.updateContourLines()
-		r.lastContourUpdate = r.Simulator.Time
-	}
-
 	// Handle keyboard input - only respond to key presses, not holds
 	if r.isKeyJustPressed(ebiten.KeySpace) {
 		r.Simulator.SetPaused(!r.Simulator.IsPaused)
@@ -148,23 +123,12 @@ func (r *Renderer) Update() error {
 		r.ShowGrid = !r.ShowGrid
 	}
 
-	if r.isKeyJustPressed(ebiten.KeyC) {
-		r.ShowConcentration = !r.ShowConcentration
-	}
-
 	if r.isKeyJustPressed(ebiten.KeyS) {
 		r.ShowSensors = !r.ShowSensors
 	}
 
 	if r.isKeyJustPressed(ebiten.KeyL) {
 		r.ShowLegend = !r.ShowLegend
-	}
-
-	if r.isKeyJustPressed(ebiten.KeyO) {
-		r.ShowContours = !r.ShowContours
-		if r.ShowContours {
-			r.updateContourLines()
-		}
 	}
 
 	if r.isKeyJustPressed(ebiten.KeyT) {
@@ -191,11 +155,6 @@ func (r *Renderer) Update() error {
 
 // Draw renders the current state to the screen
 func (r *Renderer) Draw(screen *ebiten.Image) {
-	// Force contour update on first draw if enabled
-	if r.ShowContours && len(r.contourCache) == 0 {
-		r.updateContourLines()
-	}
-
 	// Clear screen
 	screen.Fill(color.RGBA{20, 20, 30, 255})
 
@@ -204,15 +163,7 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 		r.drawGrid(screen)
 	}
 
-	// Draw chemical concentration if enabled
-	if r.ShowConcentration {
-		r.drawChemicalConcentration(screen)
-	}
-
-	// Draw contour lines if enabled
-	if r.ShowContours {
-		r.drawContourLines(screen)
-	}
+	// Chemical concentration visualization has been disabled for performance reasons
 
 	// Draw chemical sources
 	r.drawChemicalSources(screen)
@@ -226,10 +177,10 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 	// Draw statistics
 	r.drawStats(screen)
 
-	// Draw concentration legend if enabled
-	if r.ShowLegend && r.ShowConcentration {
-		r.drawConcentrationLegend(screen)
-	}
+	// Draw concentration legend if enabled - disabled for performance
+	// if r.ShowLegend && r.ShowConcentration {
+	//	r.drawConcentrationLegend(screen)
+	// }
 }
 
 // Layout returns the logical screen dimensions
@@ -254,134 +205,65 @@ func (r *Renderer) worldToScreen(point types.Point) (float64, float64) {
 	return screenX, screenY
 }
 
-// Draw a visualization of chemical concentration
+// Draw a visualization of chemical concentration - removed for performance
 func (r *Renderer) drawChemicalConcentration(screen *ebiten.Image) {
-	bounds := r.World.GetBounds()
-	width := bounds.Max.X - bounds.Min.X
-	height := bounds.Max.Y - bounds.Min.Y
-
-	// Define grid resolution for visualization (lower = higher performance)
-	cellSizeX := float64(r.WindowWidth) / 80 // Increased resolution
-	cellSizeY := float64(r.WindowHeight) / 80
-
-	// Get concentration stats for color scaling
-	maxConcentration := r.Stats.Chemicals.MaxConcentration
-	if maxConcentration <= 0 {
-		maxConcentration = 1.0 // Prevent division by zero
-	}
-
-	// Draw concentration grid
-	for screenY := 0; screenY < r.WindowHeight; screenY += int(cellSizeY) {
-		for screenX := 0; screenX < r.WindowWidth; screenX += int(cellSizeX) {
-			// Convert screen coordinates to world coordinates
-			normalizedX := float64(screenX) / float64(r.WindowWidth)
-			normalizedY := float64(screenY) / float64(r.WindowHeight)
-
-			worldX := bounds.Min.X + normalizedX*width
-			worldY := bounds.Min.Y + normalizedY*height
-
-			// Get concentration at this point
-			point := types.Point{X: worldX, Y: worldY}
-			concentration := r.World.GetConcentrationAt(point)
-
-			// Normalize concentration for color mapping (0.0 to 1.0)
-			normalizedConc := math.Min(1.0, concentration/maxConcentration)
-
-			// Get color from current scheme
-			cellColor := GetColorFromScheme(r.CurrentColorScheme, normalizedConc)
-
-			// Apply transparency
-			cellColor.A = 130 // Semi-transparent
-
-			// Apply a small amount of smoothing to reduce banding
-			if screenX > 0 && screenY > 0 && screenX < r.WindowWidth-int(cellSizeX) && screenY < r.WindowHeight-int(cellSizeY) {
-				// Simple box blur-like effect by slightly blending with neighbors
-				// This is a simplified version - a full implementation would be more complex
-				smoothingFactor := 0.2
-				if normalizedConc > 0 && normalizedConc < 1 {
-					// Only apply smoothing to non-extreme values
-					jitter := (math.Sin(float64(screenX)*0.1) + math.Cos(float64(screenY)*0.1)) * smoothingFactor
-					normalizedConc += jitter * 0.01 // Subtle dithering effect
-				}
-			}
-
-			// Draw a rectangle for this grid cell
-			for y := 0; y < int(cellSizeY); y++ {
-				for x := 0; x < int(cellSizeX); x++ {
-					if screenX+x < r.WindowWidth && screenY+y < r.WindowHeight {
-						screen.Set(screenX+x, screenY+y, cellColor)
-					}
-				}
-			}
-		}
-	}
-
-	// Draw legend if enabled
-	if r.ShowLegend {
-		r.drawConcentrationLegend(screen)
-	}
-}
-
-// Draw a legend for the concentration visualization
-func (r *Renderer) drawConcentrationLegend(screen *ebiten.Image) {
-	// Position in bottom-right corner
-	legendWidth := 150
-	legendHeight := 20
-	padding := 10
-	x := r.WindowWidth - legendWidth - padding
-	y := r.WindowHeight - legendHeight - padding
-
-	// Draw legend background
-	for ly := 0; ly < legendHeight; ly++ {
-		for lx := 0; lx < legendWidth; lx++ {
-			position := float64(lx) / float64(legendWidth)
-			color := GetColorFromScheme(r.CurrentColorScheme, position)
-			color.A = 200 // More opaque for the legend
-			screen.Set(x+lx, y+ly, color)
-		}
-	}
-
-	// Draw border
-	for lx := 0; lx < legendWidth; lx++ {
-		screen.Set(x+lx, y-1, color.RGBA{200, 200, 200, 255})
-		screen.Set(x+lx, y+legendHeight, color.RGBA{200, 200, 200, 255})
-	}
-	for ly := -1; ly <= legendHeight; ly++ {
-		screen.Set(x-1, y+ly, color.RGBA{200, 200, 200, 255})
-		screen.Set(x+legendWidth, y+ly, color.RGBA{200, 200, 200, 255})
-	}
-
-	// Draw min/max labels
-	minLabel := "0.0"
-	maxLabel := fmt.Sprintf("%.1f", r.Stats.Chemicals.MaxConcentration)
-
-	ebitenutil.DebugPrintAt(screen, minLabel, x, y-15)
-	ebitenutil.DebugPrintAt(screen, maxLabel, x+legendWidth-30, y-15)
-
-	// Draw scheme name
-	schemeName := r.CurrentColorScheme.Name
-	ebitenutil.DebugPrintAt(screen, schemeName, x+legendWidth/2-20, y+legendHeight+5)
+	// This method is kept for compatibility but its functionality has been disabled
+	// for performance reasons
 }
 
 // Draw chemical sources
 func (r *Renderer) drawChemicalSources(screen *ebiten.Image) {
+	// Get chemical sources
 	sources := r.World.GetChemicalSources()
 
+	// Draw each chemical source
 	for _, source := range sources {
+		// Skip inactive sources
+		if !source.IsActive {
+			continue
+		}
+
 		// Convert world coordinates to screen coordinates
-		screenX, screenY := r.worldToScreen(source.Position)
+		x, y := r.worldToScreen(source.Position)
 
-		// Draw a circle at the source position
-		radius := 5.0 + 10.0*(source.Strength/r.Config.Chemical.MaxStrength)
+		// Calculate size based on source strength
+		radius := math.Sqrt(source.Strength) * 0.3
+		radius = math.Max(5, math.Min(30, radius)) // Clamp between 5 and 30 pixels
 
-		// Draw a filled circle
-		for y := int(screenY) - int(radius); y <= int(screenY)+int(radius); y++ {
-			for x := int(screenX) - int(radius); x <= int(screenX)+int(radius); x++ {
-				dx := float64(x) - screenX
-				dy := float64(y) - screenY
+		// Size indicates strength
+		// Scale the size based on energy level
+		energyRatio := source.Energy / source.MaxEnergy
+		sizeModifier := 0.5 + 0.5*energyRatio // 50% - 100% of original size
+		radius *= sizeModifier
+
+		// Get color from scheme based on decay factor
+		// Higher decay = faster falloff = "hotter" color
+		relativeDecay := (source.DecayFactor - 0.001) / (0.01 - 0.001) // Normalized between 0-1
+		sourceColor := GetColorFromScheme(r.CurrentColorScheme, 1.0-relativeDecay)
+
+		// Make source more visible by increasing opacity with energy
+		sourceColor.A = uint8(200 * energyRatio)
+
+		// Draw filled circle
+		for cy := int(y) - int(radius); cy <= int(y)+int(radius); cy++ {
+			for cx := int(x) - int(radius); cx <= int(x)+int(radius); cx++ {
+				dx := float64(cx) - x
+				dy := float64(cy) - y
 				if dx*dx+dy*dy <= radius*radius {
-					screen.Set(x, y, color.RGBA{200, 100, 0, 255})
+					if cx >= 0 && cx < r.WindowWidth && cy >= 0 && cy < r.WindowHeight {
+						screen.Set(cx, cy, sourceColor)
+					}
 				}
+			}
+		}
+
+		// Draw outline
+		outlineColor := color.RGBA{255, 255, 255, 200}
+		for angle := 0.0; angle < 2*math.Pi; angle += 0.01 {
+			cx := int(x + math.Cos(angle)*radius)
+			cy := int(y + math.Sin(angle)*radius)
+			if cx >= 0 && cx < r.WindowWidth && cy >= 0 && cy < r.WindowHeight {
+				screen.Set(cx, cy, outlineColor)
 			}
 		}
 	}
@@ -520,9 +402,7 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		fmt.Sprintf("Avg Energy: %.1f (%.0f%%)",
 			r.Stats.Organisms.AverageEnergy,
 			r.Stats.Organisms.EnergyRatio*100),
-		fmt.Sprintf("Color Scheme: %s", r.CurrentColorScheme.Name),
 		fmt.Sprintf("Grid: %v", r.ShowGrid),
-		fmt.Sprintf("Contours: %v", r.ShowContours),
 		fmt.Sprintf("Trails: %v", r.ShowTrails),
 	}
 
@@ -536,8 +416,6 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		"Space: Pause/Resume",
 		"R: Reset",
 		"G: Toggle Grid",
-		"C: Toggle Concentration",
-		"O: Toggle Contours",
 		"S: Toggle Sensors",
 		"L: Toggle Legend",
 		"T: Toggle Trails",
@@ -586,112 +464,7 @@ func (r *Renderer) drawGrid(screen *ebiten.Image) {
 	}
 }
 
-// Update contour lines
-func (r *Renderer) updateContourLines() {
-	// Get the concentration grid from the world
-	grid := r.World.GetConcentrationGrid()
-	if grid == nil {
-		fmt.Println("Warning: concentration grid is nil")
-		return
-	}
-
-	// Generate contours for the current levels
-	worldContours := grid.GenerateContourLines(r.ContourLevels)
-
-	// Count total contours for debugging
-	totalContours := 0
-	for _, contours := range worldContours {
-		totalContours += len(contours)
-	}
-
-	// Comment out the excessive logging statement
-	// fmt.Printf("Generated %d contour lines across %d levels\n", totalContours, len(worldContours))
-
-	// Convert to local representation
-	r.contourCache = make(map[float64][]ContourLine)
-	for level, contours := range worldContours {
-		r.contourCache[level] = make([]ContourLine, len(contours))
-		for i, contour := range contours {
-			r.contourCache[level][i] = ContourLine{
-				Level:  contour.Level,
-				Points: contour.Points,
-			}
-		}
-	}
-}
-
-// Draw contour lines
-func (r *Renderer) drawContourLines(screen *ebiten.Image) {
-	if len(r.contourCache) == 0 {
-		return
-	}
-
-	// Iterate through each contour level
-	for level, contours := range r.contourCache {
-		// Normalize level for color selection
-		maxConcentration := r.Stats.Chemicals.MaxConcentration
-		if maxConcentration <= 0 {
-			maxConcentration = 1.0
-		}
-
-		normalizedLevel := math.Min(1.0, level/maxConcentration)
-
-		// Get color for this contour level
-		levelColor := GetColorFromScheme(r.CurrentColorScheme, normalizedLevel)
-		// Make lines more visible
-		levelColor.A = 255 // Fully opaque
-
-		// Draw each contour line
-		for _, contour := range contours {
-			// Skip contours with too few points
-			if len(contour.Points) < 2 {
-				continue
-			}
-
-			// Draw the contour as connected line segments with increased thickness
-			for i := 0; i < len(contour.Points)-1; i++ {
-				// Convert world coordinates to screen coordinates
-				x1, y1 := r.worldToScreen(contour.Points[i])
-				x2, y2 := r.worldToScreen(contour.Points[i+1])
-
-				// Draw thicker line by drawing multiple lines with slight offsets
-				ebitenutil.DrawLine(screen, x1, y1, x2, y2, levelColor)
-
-				// Draw additional lines for thickness
-				offset := 0.5
-				ebitenutil.DrawLine(screen, x1+offset, y1, x2+offset, y2, levelColor)
-				ebitenutil.DrawLine(screen, x1-offset, y1, x2-offset, y2, levelColor)
-				ebitenutil.DrawLine(screen, x1, y1+offset, x2, y2+offset, levelColor)
-				ebitenutil.DrawLine(screen, x1, y1-offset, x2, y2-offset, levelColor)
-			}
-
-			// Optionally, draw the contour level value at the middle of the contour
-			if len(contour.Points) > 5 && math.Mod(level, 50) < 0.1 { // Only label major contours
-				midIndex := len(contour.Points) / 2
-				midX, midY := r.worldToScreen(contour.Points[midIndex])
-
-				// Draw label background for better visibility
-				labelStr := fmt.Sprintf("%.0f", level)
-
-				// Draw a small background box
-				textWidth := 7 * len(labelStr) // Estimate text width
-				boxPadding := 2
-				for y := int(midY) - 8 - boxPadding; y <= int(midY)+boxPadding; y++ {
-					for x := int(midX) - (textWidth / 2) - boxPadding; x <= int(midX)+(textWidth/2)+boxPadding; x++ {
-						if x >= 0 && x < r.WindowWidth && y >= 0 && y < r.WindowHeight {
-							screen.Set(x, y, color.RGBA{20, 20, 30, 255}) // Fully opaque
-						}
-					}
-				}
-
-				// Draw the text
-				ebitenutil.DebugPrintAt(screen, labelStr, int(midX)-textWidth/2, int(midY)-8)
-			}
-		}
-	}
-}
-
-// drawTriangle draws a filled triangle with the specified points and color
+// Draw a triangle with the specified points and color
 func (r *Renderer) drawTriangle(screen *ebiten.Image, x1, y1, x2, y2, x3, y3 float64, clr color.Color) {
 	// Find the bounding box of the triangle
 	minX := math.Min(x1, math.Min(x2, x3))

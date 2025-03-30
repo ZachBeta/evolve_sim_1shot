@@ -40,14 +40,12 @@ type ChemicalConfig struct {
 
 // RenderConfig holds settings for visualization
 type RenderConfig struct {
-	WindowWidth       int  `json:"windowWidth"`
-	WindowHeight      int  `json:"windowHeight"`
-	FrameRate         int  `json:"frameRate"`
-	ShowGrid          bool `json:"showGrid"`
-	ShowConcentration bool `json:"showConcentration"`
-	ShowSensors       bool `json:"showSensors"`
-	ShowLegend        bool `json:"showLegend"`
-	ShowContours      bool `json:"showContours"`
+	WindowWidth  int  `json:"windowWidth"`
+	WindowHeight int  `json:"windowHeight"`
+	FrameRate    int  `json:"frameRate"`
+	ShowGrid     bool `json:"showGrid"`
+	ShowSensors  bool `json:"showSensors"`
+	ShowLegend   bool `json:"showLegend"`
 }
 
 // SimulationConfig holds all configuration for the simulation
@@ -89,14 +87,12 @@ func DefaultConfig() SimulationConfig {
 			TargetSystemEnergy:      10000.0,
 		},
 		Render: RenderConfig{
-			WindowWidth:       800,
-			WindowHeight:      800,
-			FrameRate:         60,
-			ShowGrid:          true,
-			ShowConcentration: true,
-			ShowSensors:       true,
-			ShowLegend:        true,
-			ShowContours:      true,
+			WindowWidth:  800,
+			WindowHeight: 800,
+			FrameRate:    60,
+			ShowGrid:     true,
+			ShowSensors:  true,
+			ShowLegend:   true,
 		},
 		RandomSeed:      0, // 0 means use current time as seed
 		SimulationSpeed: 10.0,
