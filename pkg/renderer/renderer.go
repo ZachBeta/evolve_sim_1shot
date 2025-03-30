@@ -24,12 +24,22 @@ type Renderer struct {
 	ShowConcentration  bool
 	ShowSensors        bool
 	ShowLegend         bool
+	ShowContours       bool
 	Stats              simulation.SimulationStats
 	FPS                float64
 	keyStates          map[ebiten.Key]bool
 	CurrentColorScheme ColorScheme
 	ColorSchemes       []ColorScheme
 	CurrentSchemeIndex int
+	ContourLevels      []float64
+	contourCache       map[float64][]ContourLine
+	lastContourUpdate  float64
+}
+
+// ContourLine is a local representation of the world's ContourLine
+type ContourLine struct {
+	Level  float64
+	Points []types.Point
 }
 
 // NewRenderer creates a new renderer with the given configuration
@@ -42,6 +52,9 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 		ClassicScheme,
 	}
 
+	// Define default contour levels
+	contourLevels := []float64{10, 20, 50, 100, 200, 500}
+
 	return &Renderer{
 		World:              world,
 		Simulator:          simulator,
@@ -52,11 +65,15 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 		ShowConcentration:  config.Render.ShowConcentration,
 		ShowSensors:        config.Render.ShowSensors,
 		ShowLegend:         config.Render.ShowLegend,
+		ShowContours:       config.Render.ShowContours,
 		FPS:                0,
 		keyStates:          make(map[ebiten.Key]bool),
 		CurrentColorScheme: ViridisScheme,
 		ColorSchemes:       colorSchemes,
 		CurrentSchemeIndex: 0,
+		ContourLevels:      contourLevels,
+		contourCache:       make(map[float64][]ContourLine),
+		lastContourUpdate:  0,
 	}
 }
 
@@ -78,6 +95,12 @@ func (r *Renderer) Update() error {
 
 	// Update FPS
 	r.FPS = ebiten.ActualFPS()
+
+	// Update contour lines every 0.5 seconds if showing contours
+	if r.ShowContours && r.Simulator.Time-r.lastContourUpdate > 0.5 {
+		r.updateContourLines()
+		r.lastContourUpdate = r.Simulator.Time
+	}
 
 	// Handle keyboard input - only respond to key presses, not holds
 	if r.isKeyJustPressed(ebiten.KeySpace) {
@@ -102,6 +125,13 @@ func (r *Renderer) Update() error {
 
 	if r.isKeyJustPressed(ebiten.KeyL) {
 		r.ShowLegend = !r.ShowLegend
+	}
+
+	if r.isKeyJustPressed(ebiten.KeyO) {
+		r.ShowContours = !r.ShowContours
+		if r.ShowContours {
+			r.updateContourLines()
+		}
 	}
 
 	// Cycle through color schemes
@@ -135,6 +165,11 @@ func (r *Renderer) Draw(screen *ebiten.Image) {
 	// Draw chemical concentration if enabled
 	if r.ShowConcentration {
 		r.drawChemicalConcentration(screen)
+	}
+
+	// Draw contour lines if enabled
+	if r.ShowContours {
+		r.drawContourLines(screen)
 	}
 
 	// Draw chemical sources
@@ -374,6 +409,7 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		"R: Reset",
 		"G: Toggle Grid",
 		"C: Toggle Concentration",
+		"O: Toggle Contours",
 		"S: Toggle Sensors",
 		"L: Toggle Legend",
 		"M: Cycle Color Schemes",
@@ -418,5 +454,93 @@ func (r *Renderer) drawGrid(screen *ebiten.Image) {
 		startX, startY := r.worldToScreen(types.Point{X: bounds.Min.X, Y: worldY})
 		endX, endY := r.worldToScreen(types.Point{X: bounds.Max.X, Y: worldY})
 		ebitenutil.DrawLine(screen, startX, startY, endX, endY, color.RGBA{60, 60, 80, 100})
+	}
+}
+
+// Update contour lines
+func (r *Renderer) updateContourLines() {
+	// Get the concentration grid from the world
+	grid := r.World.GetConcentrationGrid()
+	if grid == nil {
+		return
+	}
+
+	// Generate contours for the current levels
+	worldContours := grid.GenerateContourLines(r.ContourLevels)
+
+	// Convert to local representation
+	r.contourCache = make(map[float64][]ContourLine)
+	for level, contours := range worldContours {
+		r.contourCache[level] = make([]ContourLine, len(contours))
+		for i, contour := range contours {
+			r.contourCache[level][i] = ContourLine{
+				Level:  contour.Level,
+				Points: contour.Points,
+			}
+		}
+	}
+}
+
+// Draw contour lines
+func (r *Renderer) drawContourLines(screen *ebiten.Image) {
+	if len(r.contourCache) == 0 {
+		return
+	}
+
+	// Iterate through each contour level
+	for level, contours := range r.contourCache {
+		// Normalize level for color selection
+		maxConcentration := r.Stats.Chemicals.MaxConcentration
+		if maxConcentration <= 0 {
+			maxConcentration = 1.0
+		}
+
+		normalizedLevel := math.Min(1.0, level/maxConcentration)
+
+		// Get color for this contour level
+		levelColor := GetColorFromScheme(r.CurrentColorScheme, normalizedLevel)
+		// Make lines more visible
+		levelColor.A = 230
+
+		// Draw each contour line
+		for _, contour := range contours {
+			// Skip contours with too few points
+			if len(contour.Points) < 2 {
+				continue
+			}
+
+			// Draw the contour as connected line segments
+			for i := 0; i < len(contour.Points)-1; i++ {
+				// Convert world coordinates to screen coordinates
+				x1, y1 := r.worldToScreen(contour.Points[i])
+				x2, y2 := r.worldToScreen(contour.Points[i+1])
+
+				// Draw line segment
+				ebitenutil.DrawLine(screen, x1, y1, x2, y2, levelColor)
+			}
+
+			// Optionally, draw the contour level value at the middle of the contour
+			if len(contour.Points) > 5 && math.Mod(level, 50) < 0.1 { // Only label major contours
+				midIndex := len(contour.Points) / 2
+				midX, midY := r.worldToScreen(contour.Points[midIndex])
+
+				// Draw label background for better visibility
+				labelStr := fmt.Sprintf("%.0f", level)
+
+				// Draw a small background box
+				textWidth := 7 * len(labelStr) // Estimate text width
+				boxPadding := 2
+				for y := int(midY) - 8 - boxPadding; y <= int(midY)+boxPadding; y++ {
+					for x := int(midX) - (textWidth / 2) - boxPadding; x <= int(midX)+(textWidth/2)+boxPadding; x++ {
+						if x >= 0 && x < r.WindowWidth && y >= 0 && y < r.WindowHeight {
+							screen.Set(x, y, color.RGBA{20, 20, 30, 200})
+						}
+					}
+				}
+
+				// Draw the text
+				ebitenutil.DebugPrintAt(screen, labelStr, int(midX)-textWidth/2, int(midY)-8)
+			}
+		}
 	}
 }

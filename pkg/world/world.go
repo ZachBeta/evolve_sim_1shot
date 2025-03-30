@@ -306,3 +306,27 @@ func (w *World) Reset(cfg config.SimulationConfig) {
 	// Re-lock mutex to satisfy defer w.mutex.Unlock()
 	w.mutex.Lock()
 }
+
+// GetConcentrationGrid returns the current concentration grid
+func (w *World) GetConcentrationGrid() *ConcentrationGrid {
+	w.mutex.RLock()
+	defer w.mutex.RUnlock()
+
+	// Ensure the grid is initialized
+	if w.concentrationGrid == nil {
+		// Release the read lock
+		w.mutex.RUnlock()
+
+		// Acquire a write lock to initialize the grid
+		w.mutex.Lock()
+		// Check again in case another thread initialized it while we were waiting
+		if w.concentrationGrid == nil {
+			w.InitializeConcentrationGrid(5.0)
+		}
+		// Downgrade to a read lock
+		w.mutex.Unlock()
+		w.mutex.RLock()
+	}
+
+	return w.concentrationGrid
+}
