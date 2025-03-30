@@ -86,7 +86,7 @@ func DefaultConfig() SimulationConfig {
 			ShowContours:      true,
 		},
 		RandomSeed:      0, // 0 means use current time as seed
-		SimulationSpeed: 1.0,
+		SimulationSpeed: 10.0,
 	}
 }
 

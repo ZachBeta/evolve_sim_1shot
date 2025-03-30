@@ -91,8 +91,8 @@ func (s *Simulator) SetSimulationSpeed(speed float64) {
 	}
 
 	// Enforce maximum speed
-	if speed > 10.0 {
-		speed = 10.0
+	if speed > 20.0 {
+		speed = 20.0
 	}
 
 	s.SimulationSpeed = speed

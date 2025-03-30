@@ -27,5 +27,5 @@
     "showSensors": true
   },
   "randomSeed": 0,
-  "simulationSpeed": 1
+  "simulationSpeed": 10
 }
