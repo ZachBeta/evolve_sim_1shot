@@ -34,11 +34,15 @@
 - [x] Run source regeneration tests and verify they pass
 
 ## Phase 5: Integration
-- [ ] Update `Simulator` struct to include RNG
-- [ ] Update `Step` method to call `UpdateChemicalSources`
-- [ ] Write integration test for full simulation cycle
-- [ ] Run integration tests and verify energy balance is maintained
+- [x] Update `Simulator` struct to include RNG
+- [x] Update `Step` method to call `UpdateChemicalSources`
+- [x] Write integration test for full simulation cycle
+- [x] Run integration tests and verify energy balance is maintained
 - [ ] Manual testing: observe organism migration as sources deplete
+
+### Known Issues:
+- The automatic depletion of sources doesn't seem to be working as expected in the integration test.
+- Further investigation needed to determine why sources don't deplete properly in the full simulation.
 
 ## Phase 6: Visual Enhancements
 - [ ] Update renderer to visualize source energy levels

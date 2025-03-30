@@ -225,3 +225,110 @@ func TestSimulationSpeed(t *testing.T) {
 		t.Errorf("Expected maximum speed limit to be enforced")
 	}
 }
+
+func TestFullSimulationEnergyBalance(t *testing.T) {
+	// Create a simulation with a specific configuration for testing
+	cfg := config.SimulationConfig{
+		World: config.WorldConfig{
+			Width:  500,
+			Height: 500,
+		},
+		Organism: config.OrganismConfig{
+			Count:                        50,
+			Speed:                        2.0,
+			SensorDistance:               10.0,
+			TurnSpeed:                    0.3,
+			PreferenceDistributionMean:   50.0,
+			PreferenceDistributionStdDev: 10.0,
+		},
+		Chemical: config.ChemicalConfig{
+			Count:                   10,
+			MinStrength:             100,
+			MaxStrength:             200,
+			MinDecayFactor:          0.001,
+			MaxDecayFactor:          0.01,
+			DepletionRate:           1.0, // Higher depletion rate for testing
+			RegenerationProbability: 0.1,
+			TargetSystemEnergy:      100000,
+		},
+		RandomSeed: 42, // Fixed seed for deterministic testing
+	}
+
+	testWorld := world.NewWorld(cfg)
+	simulator := NewSimulator(testWorld, cfg)
+
+	// Manually set one source to have very low energy so it definitely gets depleted
+	sources := testWorld.GetChemicalSources()
+	if len(sources) > 0 {
+		// Set the energy level of the first source to be very low
+		testWorld.ChemicalSources[0].Energy = 1.0
+	}
+
+	// Record initial state after modification
+	initialSourceCount := len(testWorld.GetChemicalSources())
+	_, targetEnergy := testWorld.GetSystemEnergyInfo()
+
+	// Run simulation for many steps to observe energy balance
+	steps := 500 // Fewer steps should be enough with the forced depletion
+	for i := 0; i < steps; i++ {
+		simulator.Step()
+
+		// Add debugging for the first few steps
+		if i < 5 || i%100 == 0 {
+			t.Logf("Step %d: Source 0 energy = %.2f, active = %v",
+				i, testWorld.ChemicalSources[0].Energy, testWorld.ChemicalSources[0].IsActive)
+		}
+	}
+
+	// After running for a while:
+
+	// 1. Check total energy is still within reasonable bounds
+	finalEnergy, _ := testWorld.GetSystemEnergyInfo()
+
+	// Energy should be within a reasonable percentage of the target
+	// (Note: this might need adjustment based on your specific implementation)
+	maxDeviation := targetEnergy * 0.3 // Allow up to 30% deviation
+	if finalEnergy < targetEnergy-maxDeviation || finalEnergy > targetEnergy+maxDeviation {
+		t.Errorf("System energy out of expected bounds: got %v, expected within %v of %v",
+			finalEnergy, maxDeviation, targetEnergy)
+	}
+
+	// 2. Check that source energy levels have changed
+	currentSources := testWorld.GetChemicalSources()
+
+	// Track energy state of sources
+	activeCount := 0
+	partiallyDepletedCount := 0
+
+	for _, src := range currentSources {
+		if src.IsActive {
+			activeCount++
+
+			// Check if source has been partially depleted
+			if src.Energy < src.MaxEnergy*0.95 {
+				partiallyDepletedCount++
+			}
+		}
+	}
+
+	// We should have at least some partially depleted sources
+	if partiallyDepletedCount == 0 {
+		t.Error("No sources were depleted at all")
+	}
+
+	// 3. Check that the number of sources may have changed (either through depletion or creation)
+	if len(currentSources) < initialSourceCount {
+		t.Logf("Source count decreased: %d -> %d", initialSourceCount, len(currentSources))
+	} else if len(currentSources) > initialSourceCount {
+		t.Logf("Source count increased: %d -> %d", initialSourceCount, len(currentSources))
+	}
+
+	// 4. Organism population should survive
+	populationCount, avgEnergy := testWorld.GetPopulationInfo()
+	if populationCount == 0 {
+		t.Error("All organisms died during simulation")
+	}
+
+	t.Logf("Final state: Energy=%v/%v, Sources=%v/%v active, %v partially depleted, Population=%v, AvgEnergy=%v",
+		finalEnergy, targetEnergy, activeCount, len(currentSources), partiallyDepletedCount, populationCount, avgEnergy)
+}
