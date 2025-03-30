@@ -154,6 +154,11 @@ func (r *Renderer) Update() error {
 
 // Draw renders the current state to the screen
 func (r *Renderer) Draw(screen *ebiten.Image) {
+	// Force contour update on first draw if enabled
+	if r.ShowContours && len(r.contourCache) == 0 {
+		r.updateContourLines()
+	}
+
 	// Clear screen
 	screen.Fill(color.RGBA{20, 20, 30, 255})
 
@@ -396,6 +401,8 @@ func (r *Renderer) drawStats(screen *ebiten.Image) {
 		fmt.Sprintf("Paused: %v", r.Simulator.IsPaused),
 		fmt.Sprintf("Avg Preference: %.1f", r.Stats.Organisms.AveragePreference),
 		fmt.Sprintf("Color Scheme: %s", r.CurrentColorScheme.Name),
+		fmt.Sprintf("Grid: %v", r.ShowGrid),
+		fmt.Sprintf("Contours: %v", r.ShowContours),
 	}
 
 	// Draw stats in the top-left corner
@@ -445,7 +452,7 @@ func (r *Renderer) drawGrid(screen *ebiten.Image) {
 		worldX := bounds.Min.X + float64(i)*gridCellSize
 		startX, startY := r.worldToScreen(types.Point{X: worldX, Y: bounds.Min.Y})
 		endX, endY := r.worldToScreen(types.Point{X: worldX, Y: bounds.Max.Y})
-		ebitenutil.DrawLine(screen, startX, startY, endX, endY, color.RGBA{60, 60, 80, 100})
+		ebitenutil.DrawLine(screen, startX, startY, endX, endY, color.RGBA{120, 120, 140, 180}) // Brighter and more opaque
 	}
 
 	// Draw horizontal grid lines
@@ -453,7 +460,7 @@ func (r *Renderer) drawGrid(screen *ebiten.Image) {
 		worldY := bounds.Min.Y + float64(i)*gridCellSize
 		startX, startY := r.worldToScreen(types.Point{X: bounds.Min.X, Y: worldY})
 		endX, endY := r.worldToScreen(types.Point{X: bounds.Max.X, Y: worldY})
-		ebitenutil.DrawLine(screen, startX, startY, endX, endY, color.RGBA{60, 60, 80, 100})
+		ebitenutil.DrawLine(screen, startX, startY, endX, endY, color.RGBA{120, 120, 140, 180}) // Brighter and more opaque
 	}
 }
 
@@ -462,11 +469,20 @@ func (r *Renderer) updateContourLines() {
 	// Get the concentration grid from the world
 	grid := r.World.GetConcentrationGrid()
 	if grid == nil {
+		fmt.Println("Warning: concentration grid is nil")
 		return
 	}
 
 	// Generate contours for the current levels
 	worldContours := grid.GenerateContourLines(r.ContourLevels)
+
+	// Count total contours for debugging
+	totalContours := 0
+	for _, contours := range worldContours {
+		totalContours += len(contours)
+	}
+
+	fmt.Printf("Generated %d contour lines across %d levels\n", totalContours, len(worldContours))
 
 	// Convert to local representation
 	r.contourCache = make(map[float64][]ContourLine)
@@ -500,7 +516,7 @@ func (r *Renderer) drawContourLines(screen *ebiten.Image) {
 		// Get color for this contour level
 		levelColor := GetColorFromScheme(r.CurrentColorScheme, normalizedLevel)
 		// Make lines more visible
-		levelColor.A = 230
+		levelColor.A = 255 // Fully opaque
 
 		// Draw each contour line
 		for _, contour := range contours {
@@ -509,14 +525,21 @@ func (r *Renderer) drawContourLines(screen *ebiten.Image) {
 				continue
 			}
 
-			// Draw the contour as connected line segments
+			// Draw the contour as connected line segments with increased thickness
 			for i := 0; i < len(contour.Points)-1; i++ {
 				// Convert world coordinates to screen coordinates
 				x1, y1 := r.worldToScreen(contour.Points[i])
 				x2, y2 := r.worldToScreen(contour.Points[i+1])
 
-				// Draw line segment
+				// Draw thicker line by drawing multiple lines with slight offsets
 				ebitenutil.DrawLine(screen, x1, y1, x2, y2, levelColor)
+
+				// Draw additional lines for thickness
+				offset := 0.5
+				ebitenutil.DrawLine(screen, x1+offset, y1, x2+offset, y2, levelColor)
+				ebitenutil.DrawLine(screen, x1-offset, y1, x2-offset, y2, levelColor)
+				ebitenutil.DrawLine(screen, x1, y1+offset, x2, y2+offset, levelColor)
+				ebitenutil.DrawLine(screen, x1, y1-offset, x2, y2-offset, levelColor)
 			}
 
 			// Optionally, draw the contour level value at the middle of the contour
@@ -533,7 +556,7 @@ func (r *Renderer) drawContourLines(screen *ebiten.Image) {
 				for y := int(midY) - 8 - boxPadding; y <= int(midY)+boxPadding; y++ {
 					for x := int(midX) - (textWidth / 2) - boxPadding; x <= int(midX)+(textWidth/2)+boxPadding; x++ {
 						if x >= 0 && x < r.WindowWidth && y >= 0 && y < r.WindowHeight {
-							screen.Set(x, y, color.RGBA{20, 20, 30, 200})
+							screen.Set(x, y, color.RGBA{20, 20, 30, 255}) // Fully opaque
 						}
 					}
 				}
