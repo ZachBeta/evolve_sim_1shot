@@ -14,12 +14,12 @@ type WorldConfig struct {
 
 // OrganismConfig holds settings for the simulated organisms
 type OrganismConfig struct {
-	Count          int     `json:"count"`
-	Speed          float64 `json:"speed"`
-	SensorDistance float64 `json:"sensorDistance"`
-	TurnSpeed      float64 `json:"turnSpeed"` // radians per step
-	PrefMean       float64 `json:"preferenceDistributionMean"`
-	PrefStdDev     float64 `json:"preferenceDistributionStdDev"`
+	Count                        int     `json:"count"`
+	Speed                        float64 `json:"speed"`
+	SensorDistance               float64 `json:"sensorDistance"`
+	TurnSpeed                    float64 `json:"turnSpeed"` // radians per step
+	PreferenceDistributionMean   float64 `json:"preferenceDistributionMean"`
+	PreferenceDistributionStdDev float64 `json:"preferenceDistributionStdDev"`
 }
 
 // ChemicalConfig holds settings for chemical sources
@@ -59,12 +59,12 @@ func DefaultConfig() SimulationConfig {
 			Height: 1000.0,
 		},
 		Organism: OrganismConfig{
-			Count:          100,
-			Speed:          2.0,
-			SensorDistance: 10.0,
-			TurnSpeed:      math.Pi / 10, // 18 degrees per step
-			PrefMean:       50.0,
-			PrefStdDev:     10.0,
+			Count:                        100,
+			Speed:                        2.0,
+			SensorDistance:               10.0,
+			TurnSpeed:                    math.Pi / 10, // 18 degrees per step
+			PreferenceDistributionMean:   50.0,
+			PreferenceDistributionStdDev: 10.0,
 		},
 		Chemical: ChemicalConfig{
 			Count:          5,
@@ -86,8 +86,8 @@ func DefaultConfig() SimulationConfig {
 	}
 }
 
-// LoadConfig loads configuration from a JSON file
-func LoadConfig(filename string) (SimulationConfig, error) {
+// LoadFromFile loads configuration from a JSON file
+func LoadFromFile(filename string) (SimulationConfig, error) {
 	// Start with default config
 	config := DefaultConfig()
 
@@ -106,8 +106,8 @@ func LoadConfig(filename string) (SimulationConfig, error) {
 	return config, nil
 }
 
-// SaveConfig saves configuration to a JSON file
-func SaveConfig(config SimulationConfig, filename string) error {
+// SaveToFile saves configuration to a JSON file
+func SaveToFile(config SimulationConfig, filename string) error {
 	// Convert to JSON with indentation for readability
 	data, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {

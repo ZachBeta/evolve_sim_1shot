@@ -6,6 +6,8 @@ type Rect struct {
 	Y      float64 // Y coordinate of the top-left corner
 	Width  float64 // Width of the rectangle
 	Height float64 // Height of the rectangle
+	Min    Point   // Min point (derived from X, Y)
+	Max    Point   // Max point (derived from X+Width, Y+Height)
 }
 
 // NewRect creates a new Rect with the specified position and dimensions
@@ -15,6 +17,8 @@ func NewRect(x, y, width, height float64) Rect {
 		Y:      y,
 		Width:  width,
 		Height: height,
+		Min:    Point{X: x, Y: y},
+		Max:    Point{X: x + width, Y: y + height},
 	}
 }
 

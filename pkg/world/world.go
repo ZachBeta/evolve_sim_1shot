@@ -17,11 +17,11 @@ type World struct {
 }
 
 // NewWorld creates a new world with the specified configuration
-func NewWorld(cfg config.WorldConfig) *World {
-	baseWorld := types.NewWorld(cfg.Width, cfg.Height)
+func NewWorld(cfg config.SimulationConfig) *World {
+	baseWorld := types.NewWorld(cfg.World.Width, cfg.World.Height)
 	return &World{
 		World:  baseWorld,
-		config: cfg,
+		config: cfg.World,
 	}
 }
 
@@ -174,4 +174,39 @@ func (w *World) InitializeConcentrationGrid(resolution float64) {
 	}
 
 	w.concentrationGrid = grid
+}
+
+// GetBounds returns the world boundaries as a Rect
+func (w *World) GetBounds() types.Rect {
+	return types.NewRect(0, 0, w.Width, w.Height)
+}
+
+// UpdateOrganisms replaces all organisms in the world with a new set
+func (w *World) UpdateOrganisms(organisms []types.Organism) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	// Validate that all organisms are within bounds
+	validOrganisms := make([]types.Organism, 0, len(organisms))
+	for _, org := range organisms {
+		if w.Boundaries.Contains(org.Position) {
+			validOrganisms = append(validOrganisms, org)
+		}
+	}
+
+	// Replace the organisms
+	w.Organisms = validOrganisms
+}
+
+// Reset resets the world to its initial state
+func (w *World) Reset() {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	// Clear organisms and chemical sources
+	w.Organisms = []types.Organism{}
+	w.ChemicalSources = []types.ChemicalSource{}
+
+	// Reset concentration grid
+	w.concentrationGrid = nil
 }
