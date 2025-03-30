@@ -12,20 +12,20 @@ type mockWorld struct {
 	concentrationFn func(types.Point) float64
 }
 
-func (m mockWorld) GetConcentrationAt(p types.Point) float64 {
+func (m *mockWorld) GetConcentrationAt(p types.Point) float64 {
 	return m.concentrationFn(p)
 }
 
 func TestReadSensors(t *testing.T) {
 	// Define a constant concentration world for basic testing
-	constantWorld := mockWorld{
+	constantWorld := &mockWorld{
 		concentrationFn: func(p types.Point) float64 {
 			return 10.0
 		},
 	}
 
 	// Define a gradient world where concentration increases with x coordinate
-	gradientWorld := mockWorld{
+	gradientWorld := &mockWorld{
 		concentrationFn: func(p types.Point) float64 {
 			return p.X
 		},

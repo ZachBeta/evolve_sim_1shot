@@ -14,20 +14,39 @@ import (
 type World struct {
 	types.World
 	config            config.WorldConfig
+	chemicalConfig    config.ChemicalConfig // Store chemical config separately
 	mutex             sync.RWMutex
 	concentrationGrid *ConcentrationGrid
+
+	// New fields for energy balance
+	totalSystemEnergy  float64
+	targetSystemEnergy float64
 }
 
 // NewWorld creates a new world with the specified configuration
 func NewWorld(cfg config.SimulationConfig) *World {
 	baseWorld := types.NewWorld(cfg.World.Width, cfg.World.Height)
 	world := &World{
-		World:  baseWorld,
-		config: cfg.World,
+		World:          baseWorld,
+		config:         cfg.World,
+		chemicalConfig: cfg.Chemical, // Store chemical config
 	}
 
 	// Populate the world with organisms and chemical sources
 	world.PopulateWorld(cfg)
+
+	// Calculate initial system energy
+	// Use configured targetSystemEnergy if available, otherwise calculate based on sources
+	if cfg.Chemical.TargetSystemEnergy > 0 {
+		world.targetSystemEnergy = cfg.Chemical.TargetSystemEnergy
+	} else {
+		for _, source := range world.ChemicalSources {
+			world.targetSystemEnergy += source.MaxEnergy
+		}
+	}
+
+	// Initialize total energy to match target
+	world.totalSystemEnergy = world.targetSystemEnergy
 
 	// Initialize the concentration grid for faster lookups
 	world.InitializeConcentrationGrid(5.0)
@@ -428,4 +447,158 @@ func (w *World) GetPopulationInfo() (int, float64) {
 	}
 
 	return count, avgEnergy
+}
+
+// DepleteEnergyFromSourcesAt depletes energy from chemical sources based on an organism's energy consumption
+// at the specified position. The amount of energy to deplete is distributed among sources based on their
+// contribution to the total concentration at that position.
+func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	// Calculate how much each source contributes to the concentration at this position
+	totalConcentration := 0.0
+	sourceConcentrations := make([]float64, len(w.ChemicalSources))
+
+	for i, source := range w.ChemicalSources {
+		if source.IsActive {
+			conc := source.GetConcentrationAt(position)
+			sourceConcentrations[i] = conc
+			totalConcentration += conc
+		}
+	}
+
+	// No concentration means no sources to deplete
+	if totalConcentration <= 0 {
+		return
+	}
+
+	// Distribute depletion proportionally based on concentration contribution
+	for i := range w.ChemicalSources {
+		if sourceConcentrations[i] > 0 {
+			// Calculate proportion of total concentration from this source
+			proportion := sourceConcentrations[i] / totalConcentration
+
+			// Calculate how much energy to remove from this source
+			depletionAmount := amount * proportion * 2.0 // Multiplier for energy conversion
+
+			// Don't deplete more than available
+			originalEnergy := w.ChemicalSources[i].Energy
+			if depletionAmount > originalEnergy {
+				depletionAmount = originalEnergy
+			}
+
+			// Deplete the source
+			w.ChemicalSources[i].Energy -= depletionAmount
+
+			// Track total energy removed from the system
+			w.totalSystemEnergy -= depletionAmount
+
+			// Check for depletion
+			if w.ChemicalSources[i].Energy <= 0 {
+				w.ChemicalSources[i].Energy = 0
+				w.ChemicalSources[i].IsActive = false
+
+				// Invalidate the concentration grid since a source became inactive
+				w.concentrationGrid = nil
+			}
+		}
+	}
+}
+
+// UpdateChemicalSources updates all chemical sources, handling depletion and tracking system energy
+func (w *World) UpdateChemicalSources(deltaTime float64, rng *rand.Rand) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	// Update each source
+	activeSourceCount := 0
+	for i := range w.ChemicalSources {
+		// Save original energy for tracking
+		originalEnergy := w.ChemicalSources[i].Energy
+
+		// Update the source
+		var localSystemEnergy float64 = 0 // Track changes separately to avoid pointer sharing
+		w.ChemicalSources[i].Update(deltaTime, &localSystemEnergy)
+
+		// Apply the energy change to world's total
+		energyDelta := originalEnergy - w.ChemicalSources[i].Energy
+		w.totalSystemEnergy -= energyDelta
+
+		// Count active sources
+		if w.ChemicalSources[i].IsActive {
+			activeSourceCount++
+		}
+	}
+
+	// Check if we need to create a new source
+	// Create new sources when:
+	// 1. System energy is below target
+	// 2. We have at least one inactive source
+	// 3. Random chance (to avoid creating too many at once)
+	sourceCreationProbability := deltaTime * w.chemicalConfig.RegenerationProbability
+
+	if w.totalSystemEnergy < w.targetSystemEnergy*0.8 &&
+		activeSourceCount < len(w.ChemicalSources) &&
+		rng.Float64() < sourceCreationProbability {
+		w.CreateChemicalSource(rng)
+	}
+}
+
+// CreateChemicalSource creates a new chemical source at a random position
+// to maintain energy balance in the system
+func (w *World) CreateChemicalSource(rng *rand.Rand) {
+	// Calculate energy deficit in the system
+	energyDeficit := w.targetSystemEnergy - w.totalSystemEnergy
+
+	// Don't create if the deficit is too small
+	if energyDeficit < w.targetSystemEnergy*0.1 {
+		return
+	}
+
+	// Determine strength of new source based on deficit and configuration
+	minStrength := w.chemicalConfig.MinStrength
+	maxStrength := w.chemicalConfig.MaxStrength
+
+	// Determine strength of new source based on deficit
+	// Make it relatively strong to create interesting new hotspots
+	strength := minStrength + rng.Float64()*(maxStrength-minStrength)
+
+	// Scale based on deficit (larger deficit = stronger sources)
+	deficitRatio := energyDeficit / w.targetSystemEnergy
+	strength = math.Min(maxStrength, strength*(1.0+deficitRatio))
+
+	// Determine decay factor
+	minDecay := w.chemicalConfig.MinDecayFactor
+	maxDecay := w.chemicalConfig.MaxDecayFactor
+	decayFactor := minDecay + rng.Float64()*(maxDecay-minDecay)
+
+	// Find a random position for the new source
+	// Try to keep it away from edges
+	margin := w.Width * 0.1
+	x := margin + rng.Float64()*(w.Width-2*margin)
+	y := margin + rng.Float64()*(w.Height-2*margin)
+
+	// Create and add the new source
+	source := types.NewChemicalSource(
+		types.Point{X: x, Y: y},
+		strength,
+		decayFactor,
+	)
+
+	// Add to the world
+	added := w.AddChemicalSource(source)
+
+	// Update system energy if source was added successfully
+	if added {
+		w.totalSystemEnergy += source.Energy
+	}
+}
+
+// GetSystemEnergyInfo returns the current total system energy and target energy
+func (w *World) GetSystemEnergyInfo() (float64, float64) {
+	w.mutex.RLock()
+	defer w.mutex.RUnlock()
+
+	return w.totalSystemEnergy, w.targetSystemEnergy
 }

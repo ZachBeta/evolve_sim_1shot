@@ -32,6 +32,10 @@ type ChemicalConfig struct {
 	MaxStrength    float64 `json:"maxStrength"`
 	MinDecayFactor float64 `json:"minDecayFactor"`
 	MaxDecayFactor float64 `json:"maxDecayFactor"`
+	// New fields for energy balance
+	DepletionRate           float64 `json:"depletionRate"`
+	RegenerationProbability float64 `json:"regenerationProbability"`
+	TargetSystemEnergy      float64 `json:"targetSystemEnergy"`
 }
 
 // RenderConfig holds settings for visualization
@@ -79,6 +83,10 @@ func DefaultConfig() SimulationConfig {
 			MaxStrength:    500.0,
 			MinDecayFactor: 0.001,
 			MaxDecayFactor: 0.01,
+			// Default values for energy balance
+			DepletionRate:           0.2,
+			RegenerationProbability: 0.2,
+			TargetSystemEnergy:      10000.0,
 		},
 		Render: RenderConfig{
 			WindowWidth:       800,

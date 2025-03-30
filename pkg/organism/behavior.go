@@ -55,7 +55,10 @@ func DecideDirection(readings SensorReadings, preference float64) Direction {
 // 5. Updates energy based on environment
 func Update(
 	org *types.Organism,
-	world interface{ GetConcentrationAt(types.Point) float64 },
+	world interface {
+		GetConcentrationAt(types.Point) float64
+		DepleteEnergyFromSourcesAt(types.Point, float64)
+	},
 	bounds types.Rect,
 	sensorDistance float64,
 	turnSpeed float64,
@@ -94,6 +97,13 @@ func Update(
 		energyGain := gainFactor * MAX_ENERGY_GAIN * deltaTime
 
 		// Add energy, capped at max capacity
+		oldEnergy := org.Energy
 		org.Energy = math.Min(org.Energy+energyGain, org.EnergyCapacity)
+		actualEnergyGain := org.Energy - oldEnergy
+
+		// Request energy depletion from nearby sources
+		if actualEnergyGain > 0 {
+			world.DepleteEnergyFromSourcesAt(org.Position, actualEnergyGain)
+		}
 	}
 }

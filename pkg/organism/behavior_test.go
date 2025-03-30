@@ -70,6 +70,22 @@ func TestDecideDirection(t *testing.T) {
 	})
 }
 
+// Define a mock world for testing behaviors
+type behaviorMockWorld struct {
+	concentrationFn  func(types.Point) float64
+	depletedEnergy   float64
+	depletedPosition types.Point
+}
+
+func (mw *behaviorMockWorld) GetConcentrationAt(p types.Point) float64 {
+	return mw.concentrationFn(p)
+}
+
+func (mw *behaviorMockWorld) DepleteEnergyFromSourcesAt(p types.Point, amount float64) {
+	mw.depletedEnergy += amount
+	mw.depletedPosition = p
+}
+
 func TestUpdate(t *testing.T) {
 	// Define test bounds
 	bounds := types.Rect{
@@ -78,7 +94,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Define a gradient world where concentration increases with x coordinate
-	gradientWorld := mockWorld{
+	gradientWorld := &behaviorMockWorld{
 		concentrationFn: func(p types.Point) float64 {
 			return p.X
 		},
@@ -118,7 +134,7 @@ func TestUpdate(t *testing.T) {
 		t.Skip("Skipping this test as it depends on simulation-specific behavior")
 
 		// Create a world where concentration equals x coordinate
-		variableWorld := mockWorld{
+		variableWorld := &behaviorMockWorld{
 			concentrationFn: func(p types.Point) float64 {
 				return p.X
 			},
@@ -145,6 +161,45 @@ func TestUpdate(t *testing.T) {
 		if headingChanged {
 			t.Errorf("Expected heading to remain relatively stable when at preferred concentration, got heading change of %f",
 				math.Abs(org.Heading-originalHeading))
+		}
+	})
+
+	t.Run("Energy gain and source depletion", func(t *testing.T) {
+		// Create a world with a perfect concentration match
+		perfectWorld := &behaviorMockWorld{
+			concentrationFn: func(p types.Point) float64 {
+				return 50.0 // Exact match for organism's preference
+			},
+		}
+
+		// Create organism with no energy
+		org := types.NewOrganism(
+			types.Point{X: 50, Y: 50},
+			0,    // Heading east
+			50.0, // Prefer concentration that exactly matches the world
+			1.0,
+			types.DefaultSensorAngles(),
+		)
+		org.Energy = 50.0
+		org.EnergyCapacity = 100.0
+
+		// Update organism
+		Update(&org, perfectWorld, bounds, 5.0, 0.1, 1.0)
+
+		// Organism should have gained energy
+		if org.Energy <= 50.0 {
+			t.Errorf("Expected organism to gain energy in perfect environment, but energy = %v", org.Energy)
+		}
+
+		// The world should have been depleted
+		if perfectWorld.depletedEnergy <= 0 {
+			t.Errorf("Expected world to be depleted, but depletedEnergy = %v", perfectWorld.depletedEnergy)
+		}
+
+		// The depleted position should match the organism's position
+		if perfectWorld.depletedPosition != org.Position {
+			t.Errorf("Expected depletion at organism position %v, but got %v",
+				org.Position, perfectWorld.depletedPosition)
 		}
 	})
 }
