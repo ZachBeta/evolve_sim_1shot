@@ -15,25 +15,29 @@ import (
 
 // Renderer is responsible for visualizing the simulation
 type Renderer struct {
-	World              *world.World
-	Simulator          *simulation.Simulator
-	Config             config.SimulationConfig
-	WindowWidth        int
-	WindowHeight       int
-	ShowGrid           bool
-	ShowConcentration  bool
-	ShowSensors        bool
-	ShowLegend         bool
-	ShowContours       bool
-	Stats              simulation.SimulationStats
-	FPS                float64
-	keyStates          map[ebiten.Key]bool
-	CurrentColorScheme ColorScheme
-	ColorSchemes       []ColorScheme
-	CurrentSchemeIndex int
-	ContourLevels      []float64
-	contourCache       map[float64][]ContourLine
-	lastContourUpdate  float64
+	World               *world.World
+	Simulator           *simulation.Simulator
+	Config              config.SimulationConfig
+	WindowWidth         int
+	WindowHeight        int
+	ShowGrid            bool
+	ShowConcentration   bool
+	ShowSensors         bool
+	ShowLegend          bool
+	ShowContours        bool
+	Stats               simulation.SimulationStats
+	FPS                 float64
+	keyStates           map[ebiten.Key]bool
+	CurrentColorScheme  ColorScheme
+	ColorSchemes        []ColorScheme
+	CurrentSchemeIndex  int
+	ContourLevels       []float64
+	contourCache        map[float64][]ContourLine
+	lastContourUpdate   float64
+	interpolationFactor float64 // For smooth animations between frames
+	triangleImage       *ebiten.Image
+	triangleOpts        ebiten.DrawImageOptions
+	selectedOrganism    *types.Organism // For future organism selection feature
 }
 
 // ContourLine is a local representation of the world's ContourLine
@@ -55,26 +59,34 @@ func NewRenderer(world *world.World, simulator *simulation.Simulator, config con
 	// Define default contour levels
 	contourLevels := []float64{10, 20, 50, 100, 200, 500}
 
-	return &Renderer{
-		World:              world,
-		Simulator:          simulator,
-		Config:             config,
-		WindowWidth:        config.Render.WindowWidth,
-		WindowHeight:       config.Render.WindowHeight,
-		ShowGrid:           config.Render.ShowGrid,
-		ShowConcentration:  config.Render.ShowConcentration,
-		ShowSensors:        config.Render.ShowSensors,
-		ShowLegend:         config.Render.ShowLegend,
-		ShowContours:       config.Render.ShowContours,
-		FPS:                0,
-		keyStates:          make(map[ebiten.Key]bool),
-		CurrentColorScheme: ViridisScheme,
-		ColorSchemes:       colorSchemes,
-		CurrentSchemeIndex: 0,
-		ContourLevels:      contourLevels,
-		contourCache:       make(map[float64][]ContourLine),
-		lastContourUpdate:  0,
+	// Create a new renderer
+	r := &Renderer{
+		World:               world,
+		Simulator:           simulator,
+		Config:              config,
+		WindowWidth:         config.Render.WindowWidth,
+		WindowHeight:        config.Render.WindowHeight,
+		ShowGrid:            config.Render.ShowGrid,
+		ShowConcentration:   config.Render.ShowConcentration,
+		ShowSensors:         config.Render.ShowSensors,
+		ShowLegend:          config.Render.ShowLegend,
+		ShowContours:        config.Render.ShowContours,
+		FPS:                 0,
+		keyStates:           make(map[ebiten.Key]bool),
+		CurrentColorScheme:  ViridisScheme,
+		ColorSchemes:        colorSchemes,
+		CurrentSchemeIndex:  0,
+		ContourLevels:       contourLevels,
+		contourCache:        make(map[float64][]ContourLine),
+		lastContourUpdate:   0,
+		interpolationFactor: 1.0, // Default to full interpolation
 	}
+
+	// Create a triangle image for optimized drawing
+	r.triangleImage = ebiten.NewImage(16, 16)
+	r.triangleOpts = ebiten.DrawImageOptions{}
+
+	return r
 }
 
 // isKeyJustPressed checks if a key was just pressed this frame
@@ -92,6 +104,9 @@ func (r *Renderer) Update() error {
 
 	// Update stats
 	r.Stats = r.Simulator.CollectStats()
+
+	// Update interpolation factor (will be 1.0 most of the time, could be adjusted for smoother animations)
+	r.interpolationFactor = 1.0
 
 	// Update FPS
 	r.FPS = ebiten.ActualFPS()
@@ -359,24 +374,38 @@ func (r *Renderer) drawOrganisms(screen *ebiten.Image) {
 		blue := uint8((1 - normalizedPref) * 255)
 		green := uint8(128 - math.Abs(float64(normalizedPref*255-128)))
 
-		// Draw a small circle for the organism
-		radius := 3.0
+		// Calculate the visual heading with interpolation for smooth rotation
+		visualHeading := org.PreviousHeading + (org.Heading-org.PreviousHeading)*r.interpolationFactor
 
-		// Draw a filled circle
-		for y := int(screenY) - int(radius); y <= int(screenY)+int(radius); y++ {
-			for x := int(screenX) - int(radius); x <= int(screenX)+int(radius); x++ {
-				dx := float64(x) - screenX
-				dy := float64(y) - screenY
-				if dx*dx+dy*dy <= radius*radius {
-					screen.Set(x, y, color.RGBA{red, green, blue, 255})
-				}
-			}
-		}
+		// Define triangle size (can be adjusted based on organism properties)
+		size := 4.0
 
-		// Draw heading indicator
-		headingX := screenX + math.Cos(org.Heading)*8
-		headingY := screenY + math.Sin(org.Heading)*8
-		ebitenutil.DrawLine(screen, screenX, screenY, headingX, headingY, color.RGBA{255, 255, 255, 200})
+		// Calculate triangle vertices
+		// The triangle should point in the direction of heading
+		// First point: front of the triangle (in heading direction)
+		frontX := screenX + math.Cos(visualHeading)*size*1.5
+		frontY := screenY + math.Sin(visualHeading)*size*1.5
+
+		// Calculate the back corners (perpendicular to heading)
+		backOffsetX := math.Cos(visualHeading+math.Pi/2) * size
+		backOffsetY := math.Sin(visualHeading+math.Pi/2) * size
+
+		// Left back corner
+		leftX := screenX - math.Cos(visualHeading)*size/2 - backOffsetX
+		leftY := screenY - math.Sin(visualHeading)*size/2 - backOffsetY
+
+		// Right back corner
+		rightX := screenX - math.Cos(visualHeading)*size/2 + backOffsetX
+		rightY := screenY - math.Sin(visualHeading)*size/2 + backOffsetY
+
+		// Draw the triangle
+		r.drawTriangle(screen, frontX, frontY, leftX, leftY, rightX, rightY,
+			color.RGBA{red, green, blue, 255})
+
+		// Add a border for better visibility
+		ebitenutil.DrawLine(screen, frontX, frontY, leftX, leftY, color.RGBA{255, 255, 255, 200})
+		ebitenutil.DrawLine(screen, leftX, leftY, rightX, rightY, color.RGBA{255, 255, 255, 200})
+		ebitenutil.DrawLine(screen, rightX, rightY, frontX, frontY, color.RGBA{255, 255, 255, 200})
 
 		// Draw sensors if enabled
 		if r.ShowSensors {
@@ -566,4 +595,40 @@ func (r *Renderer) drawContourLines(screen *ebiten.Image) {
 			}
 		}
 	}
+}
+
+// drawTriangle draws a filled triangle with the specified points and color
+func (r *Renderer) drawTriangle(screen *ebiten.Image, x1, y1, x2, y2, x3, y3 float64, clr color.Color) {
+	// Find the bounding box of the triangle
+	minX := math.Min(x1, math.Min(x2, x3))
+	maxX := math.Max(x1, math.Max(x2, x3))
+	minY := math.Min(y1, math.Min(y2, y3))
+	maxY := math.Max(y1, math.Max(y2, y3))
+
+	// Iterate over each pixel in the bounding box
+	for y := int(minY); y <= int(maxY); y++ {
+		for x := int(minX); x <= int(maxX); x++ {
+			// Check if the point is inside the triangle
+			if pointInTriangle(float64(x), float64(y), x1, y1, x2, y2, x3, y3) {
+				screen.Set(x, y, clr)
+			}
+		}
+	}
+}
+
+// pointInTriangle determines if a point is inside a triangle using barycentric coordinates
+func pointInTriangle(px, py, x1, y1, x2, y2, x3, y3 float64) bool {
+	// Calculate area of the full triangle
+	area := 0.5 * math.Abs((x2-x1)*(y3-y1)-(x3-x1)*(y2-y1))
+	if area < 0.00001 {
+		return false // Degenerate triangle
+	}
+
+	// Calculate barycentric coordinates
+	alpha := 0.5 * math.Abs((x2-x3)*(py-y3)-(y2-y3)*(px-x3)) / area
+	beta := 0.5 * math.Abs((x3-x1)*(py-y1)-(y3-y1)*(px-x1)) / area
+	gamma := 1.0 - alpha - beta
+
+	// Point is in triangle if all coordinates are between 0 and 1
+	return alpha >= 0 && beta >= 0 && gamma >= 0 && alpha <= 1 && beta <= 1 && gamma <= 1
 }

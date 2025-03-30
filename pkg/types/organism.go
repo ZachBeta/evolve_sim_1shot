@@ -6,21 +6,23 @@ import (
 
 // Organism represents a single-cell organism in the simulation
 type Organism struct {
-	Position       Point      // Current position in the world
-	Heading        float64    // Direction the organism is facing (in radians)
-	ChemPreference float64    // Preferred chemical concentration
-	Speed          float64    // Movement speed (units per step)
-	SensorAngles   [3]float64 // Angles of sensors relative to heading (front, left, right)
+	Position        Point      // Current position in the world
+	Heading         float64    // Direction the organism is facing (in radians)
+	PreviousHeading float64    // Previous heading for smooth rotation animation
+	ChemPreference  float64    // Preferred chemical concentration
+	Speed           float64    // Movement speed (units per step)
+	SensorAngles    [3]float64 // Angles of sensors relative to heading (front, left, right)
 }
 
 // NewOrganism creates a new organism with the given parameters
 func NewOrganism(position Point, heading, chemPreference, speed float64, sensorAngles [3]float64) Organism {
 	return Organism{
-		Position:       position,
-		Heading:        heading,
-		ChemPreference: chemPreference,
-		Speed:          speed,
-		SensorAngles:   sensorAngles,
+		Position:        position,
+		Heading:         heading,
+		PreviousHeading: heading, // Initialize previous heading to current heading
+		ChemPreference:  chemPreference,
+		Speed:           speed,
+		SensorAngles:    sensorAngles,
 	}
 }
 

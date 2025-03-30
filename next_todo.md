@@ -59,44 +59,48 @@ This document serves as both a tutorial and a checklist for implementing the nex
 
 ### Current Priorities
 
-#### 1. Organism Visualization (High Priority)
+#### 1. Organism Visualization (Highest Priority)
 
 - [ ] **Implement triangle-based direction indicator**
   - [ ] Replace current circle+line with triangle shape
   - [ ] Size proportionally to organism
   - [ ] Add smooth rotation during turns
   - [ ] Ensure visibility over background
+  - [ ] Use color coding based on chemical preference
 
-**Rationale**: This will make organisms easier to track and understand their movement, which is a core part of the simulation.
+**Rationale**: This will make organisms easier to track and understand their movement, which is a core part of the simulation. It's also a straightforward improvement with high visual impact.
 
-#### 2. Interactive Features (High Priority)
-
-- [ ] **Implement click-to-place chemical sources**
-  - [ ] Add mouse position tracking in world coordinates
-  - [ ] Create method to add sources at clicked position
-  - [ ] Add visual feedback during placement
-
-**Rationale**: This adds significant user interaction and makes the simulation more engaging.
-
-#### 3. Organism Trails (Medium Priority)
+#### 2. Organism Trails (High Priority)
 
 - [ ] **Implement basic trail effect**
   - [ ] Store recent positions for organisms
   - [ ] Draw fading trails behind moving organisms
   - [ ] Add toggle key for trails
+  - [ ] Optimize storage for large numbers of organisms
 
-**Rationale**: Trails help visualize movement patterns over time, revealing behavior patterns.
+**Rationale**: Trails help visualize movement patterns over time, revealing behavior patterns and making it easier to understand organism responses to chemical gradients.
 
-#### 4. Organism Selection (Medium Priority)
+#### 3. Organism Selection (Medium Priority)
 
 - [ ] **Implement organism selection**
   - [ ] Add click detection for organisms
   - [ ] Highlight selected organism
   - [ ] Display organism properties (preference, etc.)
+  - [ ] Track selected organism even when moving
 
-**Rationale**: This allows users to inspect individual organisms and understand their behavior.
+**Rationale**: This allows users to inspect individual organisms and understand their behavior in relation to the environment.
 
 ### Lower Priority Tasks
+
+#### Interactive Features (Deprioritized)
+
+- [ ] **Implement click-to-place chemical sources**
+  - [ ] Add mouse position tracking in world coordinates
+  - [ ] Create method to add sources at clicked position
+  - [ ] Add visual feedback during placement
+  - [ ] Handle synchronization with simulation state
+
+**Note**: This feature has been deprioritized due to technical challenges documented in `click_to_place_design.md`. We'll revisit it after core visualization improvements are complete.
 
 #### Sensor Visualization
 
@@ -163,8 +167,8 @@ This document serves as both a tutorial and a checklist for implementing the nex
 - [x] Enhanced Heat Map Implementation
 - [x] Contour Line Implementation
 - [ ] Triangle-based Organism Representation
-- [ ] Click-to-place Chemical Sources
 - [ ] Organism Trails
 - [ ] Organism Selection
+- [ ] Click-to-place Chemical Sources (deprioritized)
 - [ ] Sensor Visualization
 - [ ] Energy System Design 

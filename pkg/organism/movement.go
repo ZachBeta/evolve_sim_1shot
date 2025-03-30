@@ -9,6 +9,9 @@ import (
 // Move updates the organism's position based on its heading and speed
 // It handles boundary collisions and adjusts the position and heading accordingly
 func Move(org *types.Organism, bounds types.Rect, deltaTime float64) {
+	// Store previous heading before updating
+	org.PreviousHeading = org.Heading
+
 	// Calculate the distance to move based on speed and time delta
 	distance := org.Speed * deltaTime
 
@@ -51,5 +54,13 @@ func Move(org *types.Organism, bounds types.Rect, deltaTime float64) {
 	} else {
 		// No collision, update position normally
 		org.Position = newPos
+	}
+
+	// Ensure we take the shortest path for rotation (for smooth animation)
+	for org.Heading-org.PreviousHeading > math.Pi {
+		org.PreviousHeading += 2 * math.Pi
+	}
+	for org.PreviousHeading-org.Heading > math.Pi {
+		org.PreviousHeading -= 2 * math.Pi
 	}
 }
