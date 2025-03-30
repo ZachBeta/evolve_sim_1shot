@@ -20,6 +20,10 @@ go build -o evolve_sim ./cmd/evolve_sim
 ./evolve_sim
 ```
 
+```bash
+# run tests
+go test -v ./...
+```
 ## Project Structure
 
 - `cmd/evolve_sim`: Main application entry point

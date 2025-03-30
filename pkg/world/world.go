@@ -2,7 +2,9 @@ package world
 
 import (
 	"math"
+	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/zachbeta/evolve_sim/pkg/config"
 	"github.com/zachbeta/evolve_sim/pkg/types"
@@ -19,10 +21,15 @@ type World struct {
 // NewWorld creates a new world with the specified configuration
 func NewWorld(cfg config.SimulationConfig) *World {
 	baseWorld := types.NewWorld(cfg.World.Width, cfg.World.Height)
-	return &World{
+	world := &World{
 		World:  baseWorld,
 		config: cfg.World,
 	}
+
+	// Populate the world with organisms and chemical sources
+	world.PopulateWorld(cfg)
+
+	return world
 }
 
 // GetConfig returns the world configuration
@@ -198,8 +205,82 @@ func (w *World) UpdateOrganisms(organisms []types.Organism) {
 	w.Organisms = validOrganisms
 }
 
+// PopulateWorld fills the world with organisms and chemical sources based on configuration
+func (w *World) PopulateWorld(cfg config.SimulationConfig) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
+
+	// Create a random number generator with the provided seed
+	rng := rand.New(rand.NewSource(cfg.RandomSeed))
+	if cfg.RandomSeed == 0 {
+		// If no seed is provided, use current time
+		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+	}
+
+	// Add chemical sources
+	for i := 0; i < cfg.Chemical.Count; i++ {
+		// Random position within world bounds
+		x := rng.Float64() * w.Width
+		y := rng.Float64() * w.Height
+
+		// Random strength within configured range
+		strength := cfg.Chemical.MinStrength + rng.Float64()*(cfg.Chemical.MaxStrength-cfg.Chemical.MinStrength)
+
+		// Random decay factor within configured range
+		decayFactor := cfg.Chemical.MinDecayFactor + rng.Float64()*(cfg.Chemical.MaxDecayFactor-cfg.Chemical.MinDecayFactor)
+
+		// Create and add chemical source
+		source := types.NewChemicalSource(types.Point{X: x, Y: y}, strength, decayFactor)
+		w.World.AddChemicalSource(source)
+	}
+
+	// Add organisms
+	for i := 0; i < cfg.Organism.Count; i++ {
+		// Evenly distribute organisms in a grid-like pattern with some randomness
+		rows := int(math.Sqrt(float64(cfg.Organism.Count)))
+		cols := (cfg.Organism.Count + rows - 1) / rows
+
+		row := i / cols
+		col := i % cols
+
+		// Calculate base position
+		baseX := w.Width * float64(col+1) / float64(cols+1)
+		baseY := w.Height * float64(row+1) / float64(rows+1)
+
+		// Add some random offset to avoid perfect grid alignment
+		offsetX := (rng.Float64() - 0.5) * w.Width * 0.2 / float64(cols)
+		offsetY := (rng.Float64() - 0.5) * w.Height * 0.2 / float64(rows)
+
+		x := baseX + offsetX
+		y := baseY + offsetY
+
+		// Make sure organism is within bounds
+		x = math.Max(1.0, math.Min(w.Width-1.0, x))
+		y = math.Max(1.0, math.Min(w.Height-1.0, y))
+
+		// Random heading
+		heading := rng.Float64() * 2 * math.Pi
+
+		// Normal distribution for chemical preference
+		preference := rng.NormFloat64()*cfg.Organism.PreferenceDistributionStdDev + cfg.Organism.PreferenceDistributionMean
+
+		// Create and add organism
+		organism := types.NewOrganism(
+			types.Point{X: x, Y: y},
+			heading,
+			preference,
+			cfg.Organism.Speed,
+			types.DefaultSensorAngles(),
+		)
+		w.World.AddOrganism(organism)
+	}
+
+	// Reset the concentration grid
+	w.concentrationGrid = nil
+}
+
 // Reset resets the world to its initial state
-func (w *World) Reset() {
+func (w *World) Reset(cfg config.SimulationConfig) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 
@@ -209,4 +290,9 @@ func (w *World) Reset() {
 
 	// Reset concentration grid
 	w.concentrationGrid = nil
+
+	// Repopulate the world
+	w.mutex.Unlock()
+	w.PopulateWorld(cfg)
+	w.mutex.Lock()
 }

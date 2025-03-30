@@ -66,7 +66,7 @@ func (s *Simulator) Reset() {
 	s.Time = 0.0
 
 	// Reset the world
-	s.World.Reset()
+	s.World.Reset(s.Config)
 
 	// Unpause the simulation
 	s.IsPaused = false
