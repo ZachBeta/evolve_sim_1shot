@@ -1,6 +1,7 @@
 package world
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"sync"
@@ -449,12 +450,19 @@ func (w *World) GetPopulationInfo() (int, float64) {
 	return count, avgEnergy
 }
 
+// Counter for depletion calls
+var depletionCounter int
+
 // DepleteEnergyFromSourcesAt depletes energy from chemical sources based on an organism's energy consumption
 // at the specified position. The amount of energy to deplete is distributed among sources based on their
 // contribution to the total concentration at that position.
 func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64) {
+	depletionCounter++
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+
+	fmt.Printf("[Depletion #%d] Position=(%.2f,%.2f), Amount=%.4f\n",
+		depletionCounter, position.X, position.Y, amount)
 
 	// Calculate how much each source contributes to the concentration at this position
 	totalConcentration := 0.0
@@ -470,8 +478,12 @@ func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64)
 
 	// No concentration means no sources to deplete
 	if totalConcentration <= 0 {
+		fmt.Printf("[Depletion #%d] No concentration at position, skipping\n", depletionCounter)
 		return
 	}
+
+	// Track total depletion for this call
+	totalDepleted := 0.0
 
 	// Distribute depletion proportionally based on concentration contribution
 	for i := range w.ChemicalSources {
@@ -480,7 +492,7 @@ func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64)
 			proportion := sourceConcentrations[i] / totalConcentration
 
 			// Calculate how much energy to remove from this source
-			depletionAmount := amount * proportion * 2.0 // Multiplier for energy conversion
+			depletionAmount := amount * proportion * 50.0 // Increased from 5.0 to 50.0 for faster depletion
 
 			// Don't deplete more than available
 			originalEnergy := w.ChemicalSources[i].Energy
@@ -494,6 +506,11 @@ func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64)
 			// Track total energy removed from the system
 			w.totalSystemEnergy -= depletionAmount
 
+			totalDepleted += depletionAmount
+
+			fmt.Printf("[Depletion #%d] Source %d: Energy %.2f->%.2f (-%.2f)\n",
+				depletionCounter, i, originalEnergy, w.ChemicalSources[i].Energy, depletionAmount)
+
 			// Check for depletion
 			if w.ChemicalSources[i].Energy <= 0 {
 				w.ChemicalSources[i].Energy = 0
@@ -504,16 +521,27 @@ func (w *World) DepleteEnergyFromSourcesAt(position types.Point, amount float64)
 			}
 		}
 	}
+
+	fmt.Printf("[Depletion #%d] Total depleted: %.4f\n", depletionCounter, totalDepleted)
 }
+
+// Counter for debugging
+var updateCounter int
 
 // UpdateChemicalSources updates all chemical sources, handling depletion and tracking system energy
 func (w *World) UpdateChemicalSources(deltaTime float64, rng *rand.Rand) {
+	updateCounter++
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
+
+	fmt.Printf("[Call #%d] UpdateChemicalSources called with deltaTime=%.4f\n", updateCounter, deltaTime)
 
 	// Update each source
 	activeSourceCount := 0
 	for i := range w.ChemicalSources {
+		// Log before state
+		fmt.Printf("Source %d before: Energy=%.2f, Active=%v\n", i, w.ChemicalSources[i].Energy, w.ChemicalSources[i].IsActive)
+
 		// Save original energy for tracking
 		originalEnergy := w.ChemicalSources[i].Energy
 
@@ -525,22 +553,30 @@ func (w *World) UpdateChemicalSources(deltaTime float64, rng *rand.Rand) {
 		energyDelta := originalEnergy - w.ChemicalSources[i].Energy
 		w.totalSystemEnergy -= energyDelta
 
+		// Log after state
+		fmt.Printf("Source %d after: Energy=%.2f, Active=%v, Delta=%.2f\n",
+			i, w.ChemicalSources[i].Energy, w.ChemicalSources[i].IsActive, energyDelta)
+
 		// Count active sources
 		if w.ChemicalSources[i].IsActive {
 			activeSourceCount++
 		}
 	}
 
+	fmt.Printf("System energy: %.2f, Target: %.2f, Active sources: %d/%d\n",
+		w.totalSystemEnergy, w.targetSystemEnergy, activeSourceCount, len(w.ChemicalSources))
+
 	// Check if we need to create a new source
 	// Create new sources when:
 	// 1. System energy is below target
 	// 2. We have at least one inactive source
 	// 3. Random chance (to avoid creating too many at once)
-	sourceCreationProbability := deltaTime * w.chemicalConfig.RegenerationProbability
+	sourceCreationProbability := deltaTime * w.chemicalConfig.RegenerationProbability * 5.0 // Increased probability
 
-	if w.totalSystemEnergy < w.targetSystemEnergy*0.8 &&
+	if w.totalSystemEnergy < w.targetSystemEnergy*0.95 && // More aggressive threshold (was 0.8)
 		activeSourceCount < len(w.ChemicalSources) &&
 		rng.Float64() < sourceCreationProbability {
+		fmt.Printf("Creating new chemical source. Probability=%.4f\n", sourceCreationProbability)
 		w.CreateChemicalSource(rng)
 	}
 }
@@ -552,7 +588,7 @@ func (w *World) CreateChemicalSource(rng *rand.Rand) {
 	energyDeficit := w.targetSystemEnergy - w.totalSystemEnergy
 
 	// Don't create if the deficit is too small
-	if energyDeficit < w.targetSystemEnergy*0.1 {
+	if energyDeficit < w.targetSystemEnergy*0.01 { // Reduced threshold (was 0.1)
 		return
 	}
 

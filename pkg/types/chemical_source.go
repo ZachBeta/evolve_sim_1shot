@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -27,7 +28,7 @@ func NewChemicalSource(position Point, strength, decayFactor float64) ChemicalSo
 		DecayFactor:   decayFactor,
 		Energy:        maxEnergy, // Start with full energy
 		MaxEnergy:     maxEnergy,
-		DepletionRate: 0.2, // Base depletion rate (adjust as needed)
+		DepletionRate: 5.0, // Increased from 0.2 to 5.0 for faster depletion
 		IsActive:      true,
 	}
 }
@@ -73,8 +74,13 @@ func (cs *ChemicalSource) Update(deltaTime float64, worldEnergy *float64) {
 	// Don't deplete more energy than available
 	baseDepletion = math.Min(baseDepletion, cs.Energy)
 
+	fmt.Printf("ChemicalSource update: Strength=%.2f, Energy=%.2f->", cs.Strength, cs.Energy)
+
 	// Deplete energy
 	cs.Energy -= baseDepletion
+
+	fmt.Printf("%.2f (-%0.2f), Rate=%.2f, DeltaTime=%.4f\n",
+		cs.Energy, baseDepletion, cs.DepletionRate, deltaTime)
 
 	// Track total energy removed from the system
 	*worldEnergy -= baseDepletion
@@ -83,5 +89,6 @@ func (cs *ChemicalSource) Update(deltaTime float64, worldEnergy *float64) {
 	if cs.Energy <= 0 {
 		cs.Energy = 0
 		cs.IsActive = false
+		fmt.Printf("ChemicalSource depleted and deactivated.\n")
 	}
 }
