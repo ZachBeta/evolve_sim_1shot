@@ -12,6 +12,25 @@ A 2D simulation of single-cell organisms responding to chemical gradients in the
 - Energy system with consumption during movement
 - Reproduction with mutations when organisms reach energy threshold
 
+## Screenshot
+
+![Evolution Simulator](screenshots/evolution_simulator.png)
+
+The simulation in action, showing organisms (white) clustering around chemical sources (orange). The interface displays real-time statistics and supports keyboard controls for toggling visualization options.
+
+### Keyboard Controls
+
+- `Space`: Pause/Resume simulation
+- `R`: Reset simulation
+- `G`: Toggle grid display
+- `C`: Toggle concentration visualization
+- `O`: Toggle contour lines
+- `S`: Toggle organism sensors
+- `L`: Toggle legend
+- `T`: Toggle movement trails
+- `M`: Cycle color schemes
+- `+/-`: Adjust simulation speed
+
 ## Building and Running
 
 ```bash
